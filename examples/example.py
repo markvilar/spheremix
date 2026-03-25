@@ -1,13 +1,11 @@
 """Example script."""
 
-from libtemp import print_hello_from
+import spheremix
 
 
 def main() -> None:
     """Main function."""
-
-    print_hello_from("example_script")
-
+    pass
 
 if __name__ == "__main__":
     main()
