@@ -141,13 +141,13 @@ def spherical_cauchy_logpdf(
     d: int = X.shape[1]
     dot: np.ndarray = X @ mu
     denom: np.ndarray = 1.0 + rho**2 - 2.0 * rho * dot
-    denom: np.numpy = np.maximum(denom, eps)
+    denom: np.ndarray = np.maximum(denom, eps)
 
     log_surface_const = gammaln(d / 2.0) - np.log(2.0) - (d / 2.0) * np.log(np.pi)
+    numerator_term: float = (d - 1.0) * np.log(1.0 - rho**2)
+    denominator_term: float = (d - 1.0) * np.log(denom)
 
-    return (
-        log_surface_const + (d - 1.0) * np.log(1.0 - rho**2) - (d - 1.0) * np.log(denom)
-    )
+    return (log_surface_const + numerator_term - denominator_term)
 
 
 def spherical_cauchy_pdf(
