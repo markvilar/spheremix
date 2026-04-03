@@ -3,23 +3,9 @@ Module for Spherical Cauchy distribution.
 """
 
 import numpy as np
+
 from scipy.special import gammaln
-
-
-def sample_uniform_sphere(
-    n_samples: int,
-    n_features: int,
-    rng: np.random.Generator | None = None,
-) -> np.ndarray:
-    """
-    Sample from a uniform distribution on S^{d-1}.
-    """
-    if rng is None:
-        rng = np.random.default_rng()
-
-    Z = rng.normal(size=(n_samples, n_features))
-    Z /= np.linalg.norm(Z, axis=1, keepdims=True)
-    return Z
+from .utilities import sample_uniform_sphere
 
 
 def sample_spherical_cauchy(
@@ -83,17 +69,24 @@ def sample_spherical_cauchy(
     return X
 
 
-def spherical_cauchy_logpdf(
+def spherical_cauchy_log_normalizing_constant(dim: int) -> float:
+    """Calculates the spherical Cauchy log normalizing constant."""
+    numerator: float = gammaln(dim / 2.0)
+    denominator: float = np.log(2.0) + (dim / 2.0) * np.log(np.pi)
+    return numerator - denominator
+
+
+def spherical_cauchy_log_kernel(
     X: np.ndarray,
     mu: np.ndarray,
     rho: float,
     *,
-    check_input=True,
-    eps=1e-12,
+    check_input: bool = True,
+    eps: float = 1e-12,
 ) -> np.ndarray:
     """
-    Compute log-density (up to additive constant) of spherical Cauchy
-    for all data points, given one component (mu, rho).
+    Calculate unnormalized log-density for a spherical Cauchy distribution for all
+    data points, given mean and concentration (mu, rho).
 
     Arguments
     ---------
@@ -110,8 +103,8 @@ def spherical_cauchy_logpdf(
 
     Returns
     -------
-    logpdf : ndarray of shape (n_samples,)
-        log-pdf values (unnormalized)
+    logkernel: ndarray of shape (n_samples,)
+        unnormalized log-density values
     """
     X = np.asarray(X, dtype=float)
     mu = np.asarray(mu, dtype=float)
@@ -138,16 +131,83 @@ def spherical_cauchy_logpdf(
     else:
         mu = mu / max(mu_norm, eps)
 
-    d: int = X.shape[1]
+    dim: int = X.shape[1]
     dot: np.ndarray = X @ mu
     denom: np.ndarray = 1.0 + rho**2 - 2.0 * rho * dot
     denom: np.ndarray = np.maximum(denom, eps)
 
-    log_surface_const = gammaln(d / 2.0) - np.log(2.0) - (d / 2.0) * np.log(np.pi)
-    numerator_term: float = (d - 1.0) * np.log(1.0 - rho**2)
-    denominator_term: float = (d - 1.0) * np.log(denom)
+    log_numerator: float = (dim - 1.0) * np.log(1.0 - rho**2)
+    log_denominator: float = (dim - 1.0) * np.log(denom)
 
-    return (log_surface_const + numerator_term - denominator_term)
+    return log_numerator - log_denominator
+
+
+def spherical_cauchy_logpdf(
+    X: np.ndarray,
+    mu: np.ndarray,
+    rho: float,
+    *,
+    check_input: bool = True,
+    eps: float = 1e-12,
+) -> np.ndarray:
+    """
+    Calculate normalized log-density of spherical Cauchy for all data points, given mean
+    and concentration (mu, rho).
+
+    Arguments
+    ---------
+    X : array-like of shape (n_samples, n_features)
+        Samples on the unit sphere.
+    mu : array-like of shape (n_features,)
+        Mean direction / mode, expected to have unit norm.
+    rho : float
+        Concentration parameter in [0, 1).
+    check_input : bool, default=True
+        If True, validates shapes, rho range, and approximate unit norms.
+    eps : float, default=1e-12
+        Numerical tolerance for norm checks and denominator clipping.
+
+    Returns
+    -------
+    logpdf : ndarray of shape (n_samples,)
+        normalized log-density values
+    """
+    X = np.asarray(X, dtype=float)
+    mu = np.asarray(mu, dtype=float)
+
+    if X.ndim != 2:
+        raise ValueError("X must be a 2D array.")
+    if mu.ndim != 1:
+        raise ValueError("mu must be a 1D array.")
+    if X.shape[1] != mu.shape[0]:
+        raise ValueError("X and mu have incompatible shapes.")
+    if not (0.0 <= rho < 1.0):
+        raise ValueError("rho must satisfy 0 <= rho < 1.")
+
+    mu_norm = np.linalg.norm(mu)
+    if mu_norm == 0:
+        raise ValueError("mu must be non-zero.")
+
+    if check_input:
+        if not np.isclose(mu_norm, 1.0, atol=1e-7):
+            raise ValueError("mu must have unit norm.")
+        x_norms = np.linalg.norm(X, axis=1)
+        if not np.allclose(x_norms, 1.0, atol=1e-7):
+            raise ValueError("Each row of X must have unit norm.")
+    else:
+        mu = mu / max(mu_norm, eps)
+
+    dim: int = X.shape[1]
+    log_constant: float = spherical_cauchy_log_normalizing_constant(dim)
+    log_kernel: np.ndarray = spherical_cauchy_log_kernel(
+        X=X,
+        mu=mu,
+        rho=rho,
+        check_input=check_input,
+        eps=eps,
+    )
+
+    return log_constant + log_kernel
 
 
 def spherical_cauchy_pdf(
