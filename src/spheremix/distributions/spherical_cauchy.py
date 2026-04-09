@@ -4,8 +4,56 @@ Module for Spherical Cauchy distribution.
 
 import numpy as np
 
+from dataclasses import dataclass
 from scipy.special import gammaln
 from .utilities import sample_uniform_sphere
+
+
+@dataclass(slots=True, frozen=True)
+class SphericalCauchyDistribution:
+    """
+    Spherical Cauchy distribution on the unit sphere.
+
+    Parameters
+    ----------
+    mu : ndarray of shape (n_features,)
+        Mean direction / mode (unit vector).
+    rho : float
+        Concentration parameter in [0, 1).
+    """
+
+    mu: np.ndarray
+    rho: float
+
+    def logkernel(self, X: np.ndarray) -> np.ndarray:
+        """
+        Unnormalized log-density (log-kernel) at samples X.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            Points on the unit sphere.
+
+        Returns
+        -------
+        logkernel : ndarray of shape (n_samples,)
+        """
+        return spherical_cauchy_logkernel(X=X, mu=self.mu, rho=self.rho)
+
+    def logpdf(self, X: np.ndarray) -> np.ndarray:
+        """
+        Normalized log-density at samples X.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            Points on the unit sphere.
+
+        Returns
+        -------
+        logpdf : ndarray of shape (n_samples,)
+        """
+        return spherical_cauchy_logpdf(X=X, mu=self.mu, rho=self.rho)
 
 
 def sample_spherical_cauchy(
@@ -76,7 +124,7 @@ def spherical_cauchy_log_normalizing_constant(dim: int) -> float:
     return numerator - denominator
 
 
-def spherical_cauchy_log_kernel(
+def spherical_cauchy_logkernel(
     X: np.ndarray,
     mu: np.ndarray,
     rho: float,
@@ -199,7 +247,7 @@ def spherical_cauchy_logpdf(
 
     dim: int = X.shape[1]
     log_constant: float = spherical_cauchy_log_normalizing_constant(dim)
-    log_kernel: np.ndarray = spherical_cauchy_log_kernel(
+    logkernel: np.ndarray = spherical_cauchy_logkernel(
         X=X,
         mu=mu,
         rho=rho,
@@ -207,7 +255,7 @@ def spherical_cauchy_logpdf(
         eps=eps,
     )
 
-    return log_constant + log_kernel
+    return log_constant + logkernel
 
 
 def spherical_cauchy_pdf(
