@@ -4,7 +4,203 @@ Module for Spherical Cauchy mixture model.
 
 import numpy as np
 
-from spheremix.distributions import log_spherical_cauchy_pdf
+from dataclasses import dataclass, field
+from loguru import logger
+from scipy.optimize import minimize
+
+from spheremix.distributions import SphericalCauchyDistribution
+from spheremix.distributions import spherical_cauchy_logkernel
+from spheremix.distributions import spherical_cauchy_logpdf
+
+
+@dataclass(slots=True)
+class SphericalCauchyMixtureState:
+    """
+    State holding component weights and parameters for a Spherical Cauchy mixture model.
+    """
+
+    component_weights: list[float] = field(default_factory=list)
+    component_params: list[SphericalCauchyDistribution] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SphericalCauchyMixture:
+    """
+    Mixture model of Spherical Cauchy distributions.
+
+    Attributes
+    ----------
+    weights:
+        numpy array with shape (K,) and sums to 1
+    means:
+        numpy array with shape (K,D)
+    concentrations:
+        numpy array with shape (K,)
+    """
+
+    n_components: int
+    weights: np.ndarray | None = None
+    means: np.ndarray | None = None
+    concentrations: np.ndarray | None = None
+
+    # optional: bookkeeping for convergence
+    log_likelihood: float = field(default=-np.inf, init=False)
+    n_iter: int = field(default=0, init=False)
+
+    def expectation_step(self, X: np.ndarray) -> np.ndarray:
+        """
+        Compute responsibilities r_{nk} = p(z=k | x_n, Θ).
+        Returns an array of shape (N, K).
+        """
+        N, D = X.shape
+        K = self.n_components
+
+        # log‑weights + log‑kernel for each component - shape (N, K)
+        log_resp: np.ndarray = np.empty((N, K))
+        for k in range(K):
+            # Compute unnormalized log-densities - shape (N,)
+            log_kernel: np.ndarray = spherical_cauchy_logkernel(
+                X, self.means[k], self.concentrations[k]
+            )
+            log_resp[:, k] = np.log(self.weights[k]) + log_kernel
+
+        # log‑sum‑exp over components (numerically stable) - shape (N, 1)
+        log_norm: np.ndarray = np.logaddexp.reduce(log_resp, axis=1, keepdims=True)
+
+        # subtract log norm from responsibilities - shape (N, K)
+        log_resp -= log_norm
+
+        # responsibilities in linear space - shape (N, K)
+        resp: np.ndarray = np.exp(log_resp)
+
+        return resp
+
+    def maximization_step(
+        self,
+        X: np.ndarray,
+        resp: np.ndarray,
+    ) -> None:
+        """
+        Update the mixture parameters given responsibilities.
+        Modifies self.weights, self.means, self.concentrations.
+        """
+        N, K = resp.shape
+
+        # 1) update mixing weights
+        self.weights = resp.sum(axis=0) / N  # (K,)
+
+        # 2) update each component's (μ, ρ) by maximising the weighted log‑likelihood
+        for k in range(K):
+            # ---- objective: negative weighted log‑likelihood for component k ----
+            def neg_weighted_loglik(params: np.ndarray) -> float:
+                """
+                params = [mu_raw (D,), rho]
+                mu_raw is later normalised to unit length.
+                """
+                mu_raw, rho = params[:-1], params[-1]
+                mu = mu_raw / np.linalg.norm(mu_raw)  # enforce ‖mu‖ = 1
+                rho = np.clip(rho, 0.0, 0.9999)  # keep in valid range
+
+                # log‑pdf of the spherical Cauchy for all data points
+                ll = spherical_cauchy_logpdf(X, mu, rho)  # (N,)
+                # weighted sum (negative because we minimise)
+                return -np.dot(resp[:, k], ll)
+
+            # ---- initialise from current parameters ----
+            mu_init = self.means[k]  # already unit‑norm
+            rho_init = self.concentrations[k]
+            init_params = np.concatenate([mu_init, [rho_init]])
+
+            # ---- bounds: mu_raw unrestricted, rho in [0,1) ----
+            bounds = [(-np.inf, np.inf)] * mu_init.size + [(0.0, 1.0)]
+
+            # NOTE: The minimize step takes a lot of time
+            res = minimize(
+                neg_weighted_loglik,
+                init_params,
+                bounds=bounds,
+                method="L-BFGS-B",
+            )
+
+            # ---- extract and store updated parameters ----
+            mu_opt = res.x[: mu_init.size]
+            mu_opt = mu_opt / np.linalg.norm(mu_opt)  # re‑normalise
+            rho_opt = np.clip(res.x[mu_init.size], 0.0, 0.9999)
+
+            self.means[k] = mu_opt
+            self.concentrations[k] = rho_opt
+
+    def fit(
+        self,
+        X: np.ndarray,
+        max_iter: int = 100,
+        tol: float = 1e-4,
+        verbose: bool = False,
+    ) -> None:
+        """
+        Run EM until convergence or max_iter.
+        After fitting, the attributes ``weights``, ``means`` and
+        ``concentrations`` hold the learned parameters.
+        """
+        K: int = self.n_components
+        N: int = X.shape[0]
+        D: int = X.shape[1]
+
+        # Initialize weights, means, and concentrations
+        self.weights = _init_component_weights(K)
+        self.means = _init_component_means(K, D)
+        self.concentrations = _init_component_concentrations(K)
+
+        logger.info(f"K: {K}")
+        logger.info(f"N: {N}")
+        logger.info(f"D: {D}")
+
+        logger.info(f"Initial weights:          {self.weights}")
+        logger.info(f"Initial means:            {self.means.shape}")
+        logger.info(f"Initial concentrations:   {self.concentrations.shape}")
+
+        logger.info(f"Means:        {self.means}")
+        logger.info(f"Means norm:   {np.linalg.norm(self.means, axis=1)}")
+
+        # ----- EM loop --------------------------------------------------
+        for i in range(max_iter):
+            # E‑step
+            logger.info("Expectation step:")
+            responsibilities = self.expectation_step(X)  # (N, K)
+
+            # M‑step
+            logger.info("Maximization step:")
+            self.maximization_step(X, responsibilities)
+
+            # ----- compute observed‑data log‑likelihood (for convergence) -----
+            # Using log‑sum‑exp for stability:
+            #   loglik = Σ_n log Σ_k w_k * exp(logpdf_k(x_n))
+            loglik = 0.0
+            for n in range(N):
+                # compute log of mixture density for a single datum
+                log_dense = np.logaddexp.reduce(
+                    [
+                        np.log(self.weights[k])
+                        + spherical_cauchy_logkernel(
+                            X[n : n + 1], self.means[k], self.concentrations[k]
+                        ).squeeze()
+                        for k in range(K)
+                    ]
+                )
+                loglik += log_dense
+            # loglik now holds Σ_n log p(x_n)
+
+            if verbose:
+                logger.info(f"Iter {i:03d} – loglik = {loglik:.5f}")
+
+            # convergence check
+            if np.abs(loglik - self.log_likelihood) < tol:
+                if verbose:
+                    logger.info("Converged!")
+                break
+
+            self.log_likelihood = loglik
+            self.n_iter += 1
 
 
 def normalize_rows(X: np.ndarray, eps=1e-12) -> np.ndarray:
@@ -13,140 +209,20 @@ def normalize_rows(X: np.ndarray, eps=1e-12) -> np.ndarray:
     return X / norms
 
 
-def spherical_cauchy_em(
-    X: np.ndarray,
-    K: int,
-    max_iter: int = 100,
-    tol: float = 1e-4,
-    init_rho: float = 0.5,
-    random_state: int | None = None,
-    verbose: bool = False,
-) -> tuple:
-    """
-    EM for mixture of spherical Cauchy distributions.
+def _init_component_weights(K: int) -> np.ndarray:
+    weights: np.ndarray = np.ones(K)
+    return weights / np.sum(weights)
 
-    Parameters
-    ----------
-    X : array, shape (N, D)
-        L2-normalized data points (each row on unit sphere).
-    K : int
-        Number of mixture components.
-    max_iter : int
-        Maximum number of EM iterations.
-    tol : float
-        Relative change in log-likelihood for convergence.
-    init_rho : float
-        Initial rho for all components.
-    random_state : int or None
-        Seed for reproducibility.
-    verbose : bool
-        If True, prints log-likelihood per iteration.
 
-    Returns
-    -------
-    pi : (K,) mixture weights
-    mu : (K, D) component mean directions (unit vectors)
-    rho : (K,) component concentration parameters in [0, 1)
-    resp : (N, K) final responsibilities
-    log_lik_history : list of log-likelihood values
-    """
-    rng = np.random.default_rng(random_state)
-    X = normalize_rows(X)  # ensure on sphere
-    N, D = X.shape
+def _init_component_means(
+    K: int, D: int, low: float = 0.0, high: float = 1.0
+) -> np.ndarray:
+    means: np.ndarray = np.random.uniform(low=0.0, high=1.0, size=(K, D))
+    if D == 1:
+        return means
+    else:
+        return normalize_rows(means)
 
-    # Initialize parameters
-    # Randomly pick K data points as initial means
-    indices = rng.choice(N, size=K, replace=False)
-    mu = X[indices].copy()  # (K, D)
-    mu = normalize_rows(mu)
-    rho = np.full(K, init_rho, dtype=float)
-    pi = np.full(K, 1.0 / K, dtype=float)
 
-    log_lik_history = []
-
-    for it in range(max_iter):
-        # -------- E-step --------
-        # log p(x_n | k)
-        log_pdf = np.zeros((N, K))
-        for k in range(K):
-            log_pdf[:, k] = log_spherical_cauchy_pdf(X, mu[k], rho[k])
-
-        # add log mixing weights
-        log_pi = np.log(pi + 1e-12)
-        log_joint = log_pdf + log_pi  # (N, K)
-
-        # log-sum-exp over components
-        max_log = np.max(log_joint, axis=1, keepdims=True)
-        log_sum = max_log + np.log(
-            np.sum(np.exp(log_joint - max_log), axis=1, keepdims=True)
-        )
-        log_resp = log_joint - log_sum  # (N, K)
-        resp = np.exp(log_resp)  # (N, K)
-
-        # log-likelihood
-        log_lik = np.sum(log_sum)
-        log_lik_history.append(log_lik)
-
-        if verbose:
-            print(f"Iter {it:3d}: log-lik = {log_lik:.6f}")
-
-        # check convergence
-        if it > 0:
-            rel_change = (log_lik - log_lik_history[-2]) / (
-                abs(log_lik_history[-2]) + 1e-12
-            )
-            if rel_change < tol:
-                if verbose:
-                    print("Converged.")
-                break
-
-        # -------- M-step --------
-        Nk = resp.sum(axis=0) + 1e-12  # effective counts, (K,)
-
-        # mixture weights
-        pi = Nk / N
-
-        # update mu_k (weighted mean direction)
-        # mu_k = argmax_mu sum_n r_nk log f(x_n | mu, rho_k)
-        # with our approximate objective we use weighted Euclidean mean then normalize
-        for k in range(K):
-            # weighted sum
-            w_sum = (resp[:, k][:, None] * X).sum(axis=0)  # (D,)
-            norm = np.linalg.norm(w_sum)
-            if norm < 1e-12:
-                # degenerate; reinitialize randomly
-                mu[k] = X[rng.integers(N)]
-            else:
-                mu[k] = w_sum / norm
-
-        # update rho_k by 1D optimization per component
-        # we do simple fixed-point / gradient steps; for better robustness
-        # you might want to replace this with a bounded scalar optimizer (e.g., Brent).
-        for k in range(K):
-            rho_k = rho[k]
-            # simple fixed-point / gradient-like update (few iterations)
-            for _ in range(10):
-                # derivative of log-lik wrt rho (approximate)
-                # log f(x) = log(1 - rho^2) - (D-1)/2 * log(1 + rho^2 - 2 rho x^T mu)
-                # d/d rho log f(x) = (-2 rho)/(1 - rho^2)
-                #                    - (D-1)/2 * (2 rho - 2 x^T mu) / (1 + rho^2 - 2 rho x^T mu)
-                dot = X @ mu[k]  # (N,)
-                sq = 1.0 + rho_k**2 - 2.0 * rho_k * dot
-                sq = np.maximum(sq, 1e-12)
-                term1 = (-2.0 * rho_k) / np.maximum(1.0 - rho_k**2, 1e-12)
-                term2 = -0.5 * (D - 1) * (2.0 * rho_k - 2.0 * dot) / sq
-                dlogf_drho = term1 + term2  # (N,)
-                grad = np.sum(resp[:, k] * dlogf_drho)
-
-                # simple gradient step with small learning rate, projected to [0, 1)
-                step = 1e-3 * grad / (Nk[k] + 1e-12)
-                rho_k_new = np.clip(rho_k + step, 1e-6, 1 - 1e-6)
-
-                if np.abs(rho_k_new - rho_k) < 1e-5:
-                    rho_k = rho_k_new
-                    break
-                rho_k = rho_k_new
-
-            rho[k] = rho_k
-
-    return pi, mu, rho, resp, log_lik_history
+def _init_component_concentrations(K: int) -> np.ndarray:
+    return np.full(shape=(K,), fill_value=0.1)
