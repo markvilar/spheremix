@@ -22,4 +22,12 @@ from .vonmises import (
     log_von_mises_pdf as log_von_mises_pdf,
 )
 
+from .power_spherical import (
+    PowerSphericalDistribution as PowerSphericalDistribution,
+    sample_power_spherical as sample_power_spherical,
+    power_spherical_logkernel as power_spherical_logkernel,
+    power_spherical_logpdf as power_spherical_logpdf,
+    power_spherical_pdf as power_spherical_pdf,
+)
+
 __all__ = []
