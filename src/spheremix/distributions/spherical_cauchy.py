@@ -25,6 +25,25 @@ class SphericalCauchyDistribution:
     mu: np.ndarray
     rho: float
 
+    def sample(self, n_samples: int) -> np.ndarray:
+        """
+        Generates random samples from the distribution.
+
+        Parameters
+        ----------
+        n_samples : int
+            Number of samples to generate.
+
+        Returns
+        -------
+        samples: ndarray of shape (n_samples, n_features)
+        """
+        return sample_spherical_cauchy(
+            n_samples=n_samples,
+            mu=self.mu,
+            rho=self.rho,
+        )
+
     def logkernel(self, X: np.ndarray) -> np.ndarray:
         """
         Unnormalized log-density (log-kernel) at samples X.
@@ -66,31 +85,53 @@ def sample_spherical_cauchy(
     """
     Sample from a spherical Cauchy distribution on S^{d-1}.
 
+    Uses a Möbius transform approach: uniform samples on S^{d-1} are pushed
+    forward through a spherical Möbius transform parametrised by (mu, rho).
+    If U is uniform on S^{d-1}, then
+
+        X = ((1 - rho^2) * U + 2 * rho * (1 + rho * <U, mu>) * mu)
+            / (1 + rho^2 + 2 * rho * <U, mu>)
+
+    follows a spherical Cauchy distribution with mode mu and concentration
+    rho. This construction is exact (no rejection step) and works in any
+    dimension d >= 2.
+
     Arguments
     ----------
     n_samples : int
         Number of samples.
     mu : array-like of shape (d,)
-        Unit vector location / mode.
+        Unit vector location / mode. Need not be pre-normalised; the function
+        normalises it internally.
     rho : float
-        Concentration parameter in [0, 1).
+        Concentration parameter in [0, 1). rho = 0 gives the uniform
+        distribution; rho -> 1 concentrates mass around mu.
     rng : np.random.Generator, optional
-        Random number generator.
+        Random number generator. If None, a fresh Generator is created via
+        ``np.random.default_rng()``.
     eps : float
-        Numerical stability constant.
+        Small constant added to the denominator to guard against
+        floating-point division by zero when rho -> 1.
 
     Returns
     -------
     X : ndarray of shape (n_samples, d)
-        Samples on the unit sphere.
+        Samples on the unit sphere S^{d-1}.
+
+    Raises
+    ------
+    ValueError
+        If ``mu`` is the zero vector.
+    ValueError
+        If ``rho`` is not in [0, 1).
     """
     if rng is None:
         rng = np.random.default_rng()
 
-    mu = np.asarray(mu, dtype=float)
-    d = mu.shape[0]
+    mu: np.ndarray = np.asarray(mu, dtype=float)
+    d: int = mu.shape[0]
 
-    mu_norm = np.linalg.norm(mu)
+    mu_norm: float = float(np.linalg.norm(mu))
     if mu_norm == 0:
         raise ValueError("mu must be non-zero.")
     mu = mu / mu_norm
@@ -99,20 +140,19 @@ def sample_spherical_cauchy(
         raise ValueError("rho must satisfy 0 <= rho < 1.")
 
     # Step 1: uniform sphere samples
-    U = sample_uniform_sphere(n_samples, d, rng=rng)
+    U: np.ndarray = sample_uniform_sphere(n_samples, d, rng=rng)
 
     # Step 2: spherical Möbius transform
-    # This construction is described as an efficient sampling route
-    # for the spherical Cauchy family.
-    dot = U @ mu
-    denom = 1.0 + rho**2 + 2.0 * rho * dot
-    denom = np.maximum(denom, eps)
+    dot: np.ndarray = U @ mu  # shape (n_samples,)
+    denom: np.ndarray = np.maximum(
+        1.0 + rho**2 + 2.0 * rho * dot, eps
+    )  # shape (n_samples,)
 
-    X = ((1.0 - rho**2) * U + 2.0 * rho * (1.0 + rho * dot)[:, None] * mu) / denom[
-        :, None
-    ]
+    X: np.ndarray = (
+        (1.0 - rho**2) * U + 2.0 * rho * (1.0 + rho * dot)[:, None] * mu
+    ) / denom[:, None]
 
-    # Re-normalize to control floating-point drift
+    # Re-normalise to correct floating-point drift
     X /= np.linalg.norm(X, axis=1, keepdims=True)
     return X
 

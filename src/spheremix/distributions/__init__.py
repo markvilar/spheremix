@@ -3,8 +3,8 @@ Package for probability distributions.
 """
 
 from .pkbd import (
-    PKBDDistribution as PKBDDistribution,
-    pkbd_log_normalizing_constant as pkbd_log_normalizing_constant,
+    PKBDistribution as PKBDistribution,
+    sample_pkbd as sample_pkbd,
     pkbd_logkernel as pkbd_logkernel,
     pkbd_logpdf as pkbd_logpdf,
     pkbd_pdf as pkbd_pdf,
