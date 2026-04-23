@@ -8,11 +8,8 @@ from dataclasses import dataclass
 from scipy.special import gammaln
 
 
-# TODO: Implement function to sample from PKBD
-
-
 @dataclass(slots=True, frozen=True)
-class PKBDDistribution:
+class PKBDistribution:
     """
     Poisson kernel–based distribution on the unit sphere.
 
@@ -26,6 +23,25 @@ class PKBDDistribution:
 
     mu: np.ndarray
     rho: float
+
+    def sample(self, n_samples: int) -> np.ndarray:
+        """
+        Generates random samples from the distribution.
+
+        Parameters
+        ----------
+        n_samples : int
+            Number of samples to generate.
+
+        Returns
+        -------
+        samples: ndarray of shape (n_samples, n_features)
+        """
+        return sample_pkbd(
+            n_samples=n_samples,
+            mu=self.mu,
+            rho=self.rho,
+        )
 
     def logkernel(self, X: np.ndarray) -> np.ndarray:
         """
@@ -58,10 +74,105 @@ class PKBDDistribution:
         return pkbd_logpdf(X=X, mu=self.mu, rho=self.rho)
 
 
+def sample_pkbd(
+    n_samples: int,
+    mu: np.ndarray,
+    rho: float,
+    rng: np.random.Generator | None = None,
+    eps: float = 1e-12,
+) -> np.ndarray:
+    """
+    Sample from a PKBD on S^{d-1}.
+
+    Uses the ACG-envelope rejection sampler of Sablica, Hornik & Leydold (2023).
+
+    Arguments
+    ----------
+    n_samples : int
+        Number of samples.
+    mu : array-like of shape (d,)
+        Unit vector location / mode.
+    rho : float
+        Concentration parameter in [0, 1).
+    rng : np.random.Generator, optional
+        Random number generator.
+    eps : float
+        Numerical stability constant.
+
+    Returns
+    -------
+    X : ndarray of shape (n_samples, d)
+        Samples on the unit sphere.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    mu: np.ndarray = np.asarray(mu, dtype=float)
+    d: int = mu.shape[0]
+
+    # --- Reparametrize: lambda = 2*rho / (1 + rho^2) ---
+    lam: float = 2.0 * rho / (1.0 + rho * rho)
+
+    # --- Normalise mu; fall back to uniform if rho == 0 or mu == 0 ---
+    norm_mu: float = float(np.linalg.norm(mu))
+    if abs(lam) < eps or norm_mu < eps:
+        Z: np.ndarray = rng.standard_normal((n_samples, d))
+        return Z / np.linalg.norm(Z, axis=1, keepdims=True)
+
+    mu = mu / norm_mu
+
+    # --- Find optimal ACG concentration parameter b ---
+    p: float = float(d)
+    coe: np.ndarray = np.array(
+        [
+            -4.0 * (p - 1.0),
+            4.0 * p - lam**2 * (p - 2.0) ** 2,
+            2.0 * p * (p - 2.0) * lam**2,
+            -(p**2) * lam**2,
+        ]
+    )
+    roots: np.ndarray = np.roots(coe)
+    real_roots: np.ndarray = np.sort(
+        np.real(roots[np.isreal(roots) | (np.abs(np.imag(roots)) < eps)])
+    )
+    b: float = float(real_roots[1])
+
+    # --- Pre-compute scalar constants ---
+    minus_log_M: float = np.log((1.0 + np.sqrt(1.0 - lam**2 / b)) / 2.0)
+    b2: float = -1.0 + np.sqrt(1.0 / (1.0 - b))
+    b1: float = b / (1.0 - b)
+
+    # --- Rejection loop ---
+    out: np.ndarray = np.empty((n_samples, d))
+    count: int = 0
+
+    while count < n_samples:
+        # 1. Draw candidate from N(0, I_d)
+        z: np.ndarray = rng.standard_normal(d)
+
+        # 2. Compute projection onto mu and rescale to ACG proposal
+        mu_t_z: float = float(mu @ z)
+        norm_x: float = float(np.sqrt(z @ z + b1 * mu_t_z**2))
+        mut_x: float = mu_t_z * (1.0 + b2) / norm_x
+
+        # 3. Log-ratio: log[PKBD kernel / ACG density] + log-normalising offset
+        log_pkbd: float = -np.log(1.0 - lam * mut_x + eps)
+        log_acg: float = np.log(1.0 - b * mut_x**2 + eps)
+        log_ratio: float = 0.5 * p * (log_pkbd + log_acg + minus_log_M)
+
+        # 4. Accept / reject
+        if np.log(rng.random()) < log_ratio:
+            candidate: np.ndarray = (z + b2 * mu_t_z * mu) / norm_x
+            out[count] = candidate
+            count += 1
+
+    return out
+
+
 def pkbd_log_normalizing_constant(dim: int) -> float:
     """Calculates the PKBD log normalizing constant."""
-    numerator: float = gammaln((dim + 1.0) / 2.0)
-    denominator: float = np.log(2.0) + ((dim + 1.0) / 2.0) * np.log(np.pi)
+    numerator: float = gammaln(dim / 2.0)
+    denominator: float = np.log(2.0) + (dim / 2.0) * np.log(np.pi)
     return numerator - denominator
 
 
