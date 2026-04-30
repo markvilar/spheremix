@@ -42,7 +42,6 @@ def random_sphere_samples(n: int, d: int, rng: np.random.Generator) -> np.ndarra
 
 
 class TestSphericalCauchyLogKernel:
-
     def setup_method(self) -> None:
         self.rng: np.random.Generator = make_rng()
         self.d: int = 3
@@ -83,9 +82,7 @@ class TestSphericalCauchyLogKernel:
     def test_antipode_is_global_minimum(self) -> None:
         """-mu is the anti-mode: its log-kernel must be <= every other point's."""
         antipode: np.ndarray = (-self.mu)[np.newaxis, :]
-        lk_antipode: np.ndarray = spherical_cauchy_logkernel(
-            antipode, self.mu, rho=0.7
-        )
+        lk_antipode: np.ndarray = spherical_cauchy_logkernel(antipode, self.mu, rho=0.7)
         lk_rest: np.ndarray = spherical_cauchy_logkernel(self.X, self.mu, rho=0.7)
         assert np.all(lk_antipode <= lk_rest)
 
@@ -165,9 +162,7 @@ class TestSphericalCauchyLogKernel:
 
     def test_raises_on_non_unit_mu_when_check_input_true(self) -> None:
         with pytest.raises(ValueError, match="unit norm"):
-            spherical_cauchy_logkernel(
-                self.X, 2.0 * self.mu, rho=0.5, check_input=True
-            )
+            spherical_cauchy_logkernel(self.X, 2.0 * self.mu, rho=0.5, check_input=True)
 
     def test_raises_on_non_unit_X_when_check_input_true(self) -> None:
         X_bad: np.ndarray = 2.0 * self.X
@@ -181,7 +176,6 @@ class TestSphericalCauchyLogKernel:
 
 
 class TestSphericalCauchyLogPDF:
-
     def setup_method(self) -> None:
         self.rng: np.random.Generator = make_rng()
         self.d: int = 3
@@ -250,9 +244,7 @@ class TestSphericalCauchyLogPDF:
     def test_mode_has_maximum_logpdf(self) -> None:
         """mu is the mode, so logpdf(mu) >= logpdf(x) for all x."""
         mu_row: np.ndarray = self.mu[np.newaxis, :]
-        lp_mode: float = float(
-            spherical_cauchy_logpdf(mu_row, self.mu, rho=0.7).item()
-        )
+        lp_mode: float = float(spherical_cauchy_logpdf(mu_row, self.mu, rho=0.7).item())
         lp_rest: np.ndarray = spherical_cauchy_logpdf(self.X, self.mu, rho=0.7)
         assert np.all(lp_mode >= lp_rest)
 
@@ -273,7 +265,6 @@ class TestSphericalCauchyLogPDF:
 
 
 class TestSphericalCauchyPDF:
-
     def setup_method(self) -> None:
         self.rng: np.random.Generator = make_rng()
         self.d: int = 3
@@ -322,7 +313,6 @@ class TestSphericalCauchyPDF:
 
 
 class TestSampleSphericalCauchy:
-
     def setup_method(self) -> None:
         self.rng: np.random.Generator = make_rng()
 
@@ -351,9 +341,7 @@ class TestSampleSphericalCauchy:
         uniform on S^{d-1}. Coordinate means should be near zero.
         """
         mu: np.ndarray = random_unit_vector(d, self.rng)
-        X: np.ndarray = sample_spherical_cauchy(
-            N_SAMPLES, mu, rho=0.0, rng=self.rng
-        )
+        X: np.ndarray = sample_spherical_cauchy(N_SAMPLES, mu, rho=0.0, rng=self.rng)
         se: float = 1.0 / np.sqrt(N_SAMPLES)
         assert_allclose(X.mean(axis=0), 0.0, atol=6.0 * se)
 
@@ -407,9 +395,7 @@ class TestSampleSphericalCauchy:
         higher mean log-likelihood under the correct model than under rho=0.
         """
         mu: np.ndarray = random_unit_vector(d, self.rng)
-        X: np.ndarray = sample_spherical_cauchy(
-            N_SAMPLES, mu, rho=rho, rng=self.rng
-        )
+        X: np.ndarray = sample_spherical_cauchy(N_SAMPLES, mu, rho=rho, rng=self.rng)
         mean_llk: float = float(spherical_cauchy_logpdf(X, mu, rho=rho).mean())
         uniform_llk: float = float(spherical_cauchy_logpdf(X[:1], mu, rho=0.0).item())
         assert mean_llk > uniform_llk, (
@@ -419,24 +405,20 @@ class TestSampleSphericalCauchy:
 
     @pytest.mark.parametrize("d", [3, 5])
     @pytest.mark.parametrize("rho", [0.3, 0.7])
-    def test_empirical_mean_direction_aligns_with_mu(
-        self, d: int, rho: float
-    ) -> None:
+    def test_empirical_mean_direction_aligns_with_mu(self, d: int, rho: float) -> None:
         """
         The mean resultant vector of the sample should point in the direction
         of mu, verified via cosine similarity.
         """
         mu: np.ndarray = random_unit_vector(d, self.rng)
-        X: np.ndarray = sample_spherical_cauchy(
-            N_SAMPLES, mu, rho=rho, rng=self.rng
-        )
+        X: np.ndarray = sample_spherical_cauchy(N_SAMPLES, mu, rho=rho, rng=self.rng)
         mean_vec: np.ndarray = X.mean(axis=0)
         cos_sim: float = float(
             (mean_vec @ mu) / (np.linalg.norm(mean_vec) * np.linalg.norm(mu))
         )
-        assert cos_sim > 0.99, (
-            f"d={d}, rho={rho}: cosine similarity to mu = {cos_sim:.4f}"
-        )
+        assert (
+            cos_sim > 0.99
+        ), f"d={d}, rho={rho}: cosine similarity to mu = {cos_sim:.4f}"
 
     @pytest.mark.parametrize("rho", [0.3, 0.7, 0.95])
     def test_concentration_increases_with_rho(self, rho: float) -> None:
@@ -446,10 +428,14 @@ class TestSampleSphericalCauchy:
         d: int = 3
         mu: np.ndarray = random_unit_vector(d, self.rng)
         mean_cos_low: float = float(
-            (sample_spherical_cauchy(N_SAMPLES, mu, rho=0.1, rng=make_rng()) @ mu).mean()
+            (
+                sample_spherical_cauchy(N_SAMPLES, mu, rho=0.1, rng=make_rng()) @ mu
+            ).mean()
         )
         mean_cos_high: float = float(
-            (sample_spherical_cauchy(N_SAMPLES, mu, rho=rho, rng=make_rng()) @ mu).mean()
+            (
+                sample_spherical_cauchy(N_SAMPLES, mu, rho=rho, rng=make_rng()) @ mu
+            ).mean()
         )
         assert mean_cos_high > mean_cos_low, (
             f"rho={rho}: mean cos at rho ({mean_cos_high:.4f}) "
@@ -464,13 +450,11 @@ class TestSampleSphericalCauchy:
         a cross-function integration check for both sampler and density.
         """
         mu: np.ndarray = random_unit_vector(d, self.rng)
-        X: np.ndarray = sample_spherical_cauchy(
-            N_SAMPLES, mu, rho=rho, rng=self.rng
-        )
+        X: np.ndarray = sample_spherical_cauchy(N_SAMPLES, mu, rho=rho, rng=self.rng)
         lp: np.ndarray = spherical_cauchy_logpdf(X, mu, rho=rho)
-        assert np.all(np.isfinite(lp)), (
-            f"d={d}, rho={rho}: {(~np.isfinite(lp)).sum()} non-finite log-pdf values"
-        )
+        assert np.all(
+            np.isfinite(lp)
+        ), f"d={d}, rho={rho}: {(~np.isfinite(lp)).sum()} non-finite log-pdf values"
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +463,6 @@ class TestSampleSphericalCauchy:
 
 
 class TestSphericalCauchyDistribution:
-
     def setup_method(self) -> None:
         self.rng: np.random.Generator = make_rng()
         self.mu: np.ndarray = random_unit_vector(3, self.rng)
