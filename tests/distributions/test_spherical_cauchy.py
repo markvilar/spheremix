@@ -4,8 +4,8 @@ Tests for the spheremix Spherical Cauchy public API.
 
 import numpy as np
 import pytest
-from numpy.testing import assert_allclose
 
+from numpy.testing import assert_allclose
 from spheremix.distributions import (
     SphericalCauchyDistribution,
     sample_spherical_cauchy,

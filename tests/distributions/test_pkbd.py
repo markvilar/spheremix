@@ -4,8 +4,8 @@ Tests for the spheremix.distributions.pkbd public API.
 
 import numpy as np
 import pytest
-from numpy.testing import assert_allclose
 
+from numpy.testing import assert_allclose
 from spheremix.distributions import (
     PKBDistribution,
     pkbd_logkernel,
