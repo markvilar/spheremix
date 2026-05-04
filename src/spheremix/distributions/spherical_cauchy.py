@@ -128,7 +128,7 @@ def sample_spherical_cauchy(
     if rng is None:
         rng = np.random.default_rng()
 
-    mu: np.ndarray = np.asarray(mu, dtype=float)
+    mu = np.asarray(mu, dtype=float)
     d: int = mu.shape[0]
 
     mu_norm: float = float(np.linalg.norm(mu))
@@ -222,10 +222,10 @@ def spherical_cauchy_logkernel(
     dim: int = X.shape[1]
     dot: np.ndarray = X @ mu
     denom: np.ndarray = 1.0 + rho**2 - 2.0 * rho * dot
-    denom: np.ndarray = np.maximum(denom, eps)
+    denom = np.maximum(denom, eps)
 
     log_numerator: float = (dim - 1.0) * np.log(1.0 - rho**2)
-    log_denominator: float = (dim - 1.0) * np.log(denom)
+    log_denominator: np.ndarray = (dim - 1.0) * np.log(denom)
 
     return log_numerator - log_denominator
 
@@ -303,8 +303,8 @@ def spherical_cauchy_pdf(
     mu: np.ndarray,
     rho: float,
     *,
-    check_input=True,
-    eps=1e-12,
+    check_input: bool = True,
+    eps: float = 1e-12,
 ) -> np.ndarray:
     """
     Evaluate the spherical Cauchy PDF for each row of X.
@@ -335,4 +335,4 @@ def spherical_cauchy_pdf(
         check_input=check_input,
         eps=eps,
     )
-    return np.exp(log_pdf)
+    return np.exp(log_pdf)  # type: ignore[no-any-return]

@@ -28,12 +28,12 @@ def make_rng() -> np.random.Generator:
 
 def random_unit_vector(d: int, rng: np.random.Generator) -> np.ndarray:
     v: np.ndarray = rng.standard_normal(d)
-    return v / np.linalg.norm(v)
+    return v / np.linalg.norm(v)  # type: ignore[no-any-return]
 
 
 def random_sphere_samples(n: int, d: int, rng: np.random.Generator) -> np.ndarray:
     Z: np.ndarray = rng.standard_normal((n, d))
-    return Z / np.linalg.norm(Z, axis=1, keepdims=True)
+    return Z / np.linalg.norm(Z, axis=1, keepdims=True)  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------

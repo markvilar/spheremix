@@ -107,7 +107,7 @@ def sample_pkbd(
     if rng is None:
         rng = np.random.default_rng()
 
-    mu: np.ndarray = np.asarray(mu, dtype=float)
+    mu = np.asarray(mu, dtype=float)
     d: int = mu.shape[0]
 
     # --- Reparametrize: lambda = 2*rho / (1 + rho^2) ---
@@ -117,7 +117,7 @@ def sample_pkbd(
     norm_mu: float = float(np.linalg.norm(mu))
     if abs(lam) < eps or norm_mu < eps:
         Z: np.ndarray = rng.standard_normal((n_samples, d))
-        return Z / np.linalg.norm(Z, axis=1, keepdims=True)
+        return Z / np.linalg.norm(Z, axis=1, keepdims=True)  # type: ignore[no-any-return]
 
     mu = mu / norm_mu
 
@@ -207,8 +207,8 @@ def pkbd_logkernel(
         Unnormalized log-densities values
     """
 
-    X: np.ndarray = np.asarray(X, dtype=float)
-    mu: np.ndarray = np.asarray(mu, dtype=float)
+    X = np.asarray(X, dtype=float)
+    mu = np.asarray(mu, dtype=float)
 
     if X.ndim != 2:
         raise ValueError("X must be a 2D array.")
@@ -219,7 +219,7 @@ def pkbd_logkernel(
     if not (0.0 <= rho < 1.0):
         raise ValueError("rho must satisfy 0 <= rho < 1.")
 
-    mu_norm: np.ndarray = np.linalg.norm(mu)
+    mu_norm: float = float(np.linalg.norm(mu))
     if mu_norm == 0:
         raise ValueError("mu must be non-zero.")
 
@@ -230,7 +230,7 @@ def pkbd_logkernel(
         if not np.allclose(x_norms, 1.0, atol=1e-7):
             raise ValueError("Each row of X must have unit norm.")
     else:
-        mu: np.ndarray = mu / max(mu_norm, eps)
+        mu = mu / max(mu_norm, eps)
 
     dim: int = X.shape[1]
     dot: np.ndarray = X @ mu
@@ -275,8 +275,8 @@ def pkbd_logpdf(
         normalized log-densities values
     """
 
-    X: np.ndarray = np.asarray(X, dtype=float)
-    mu: np.ndarray = np.asarray(mu, dtype=float)
+    X = np.asarray(X, dtype=float)
+    mu = np.asarray(mu, dtype=float)
 
     if X.ndim != 2:
         raise ValueError("X must be a 2D array.")
@@ -287,7 +287,7 @@ def pkbd_logpdf(
     if not (0.0 <= rho < 1.0):
         raise ValueError("rho must satisfy 0 <= rho < 1.")
 
-    mu_norm: np.ndarray = np.linalg.norm(mu)
+    mu_norm: float = float(np.linalg.norm(mu))
     if mu_norm == 0:
         raise ValueError("mu must be non-zero.")
 
@@ -298,7 +298,7 @@ def pkbd_logpdf(
         if not np.allclose(x_norms, 1.0, atol=1e-7):
             raise ValueError("Each row of X must have unit norm.")
     else:
-        mu: np.ndarray = mu / max(mu_norm, eps)
+        mu = mu / max(mu_norm, eps)
 
     dim: int = X.shape[1]
     log_constant: float = pkbd_log_normalizing_constant(dim)
@@ -317,8 +317,8 @@ def pkbd_pdf(
     mu: np.ndarray,
     rho: float,
     *,
-    check_input=True,
-    eps=1e-12,
+    check_input: bool = True,
+    eps: float = 1e-12,
 ) -> np.ndarray:
     """
     Evaluate the PKBD for each row of X.
@@ -349,4 +349,4 @@ def pkbd_pdf(
         check_input=check_input,
         eps=eps,
     )
-    return np.exp(log_pdf)
+    return np.exp(log_pdf)  # type: ignore[no-any-return]

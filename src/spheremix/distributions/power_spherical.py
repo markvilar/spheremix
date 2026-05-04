@@ -167,7 +167,7 @@ def power_spherical_log_normalizing_constant(dim: int, kappa: float) -> float:
         C(kappa, d) = 2^{kappa+d-1} * pi^{(d-1)/2}
                       * Gamma(kappa + (d-1)/2) / Gamma(kappa + d - 1).
     """
-    return (
+    return float(
         -(kappa + dim - 1) * np.log(2.0)
         - ((dim - 1) / 2.0) * np.log(np.pi)
         - gammaln(kappa + (dim - 1) / 2.0)
@@ -339,4 +339,4 @@ def power_spherical_pdf(
         check_input=check_input,
         eps=eps,
     )
-    return np.exp(log_pdf)
+    return np.exp(log_pdf)  # type: ignore[no-any-return]
