@@ -17,5 +17,5 @@ def sample_uniform_sphere(
         rng = np.random.default_rng()
 
     Z: np.ndarray = rng.normal(size=(n_samples, n_features))
-    Z: np.ndarray = Z / np.linalg.norm(Z, axis=1, keepdims=True)
+    Z = Z / np.linalg.norm(Z, axis=1, keepdims=True)
     return Z

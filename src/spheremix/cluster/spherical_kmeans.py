@@ -85,6 +85,7 @@ class SphericalKMeans:
         labels: np.ndarray of shape (n_samples,)
         """
         self._check_is_fitted()
+        assert self.cluster_means is not None
         return _spherical_kmeans_predict(X=X, centers=self.cluster_means)
 
     def fit_predict(self, X: np.ndarray) -> np.ndarray:
@@ -181,7 +182,7 @@ def _init_centers_random(
     """
     n_samples: int = X.shape[0]
     idx: np.ndarray = rng.choice(n_samples, size=n_clusters, replace=False)
-    return X[idx].copy()
+    return X[idx].copy()  # type: ignore[no-any-return]
 
 
 def _init_centers_kmeans(
@@ -314,6 +315,7 @@ def _spherical_kmeans_fit(
             best_inertia = inertia
             best_n_iter = n_iter
 
+    assert best_labels is not None and best_centers is not None
     return best_labels, best_centers, best_inertia, best_n_iter
 
 
@@ -436,7 +438,7 @@ def _spherical_kmeans_predict(
         Cluster index of the nearest centre for each sample.
     """
     cos_sims: np.ndarray = X @ centers.T  # (n_samples, n_clusters)
-    return cos_sims.argmax(axis=1).astype(np.intp)
+    return cos_sims.argmax(axis=1).astype(np.intp)  # type: ignore[no-any-return]
 
 
 def _spherical_kmeans_transform(

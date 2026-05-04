@@ -51,6 +51,11 @@ class SphericalCauchyMixture:
         Compute responsibilities r_{nk} = p(z=k | x_n, Θ).
         Returns an array of shape (N, K).
         """
+        assert (
+            self.weights is not None
+            and self.means is not None
+            and self.concentrations is not None
+        )
         N, D = X.shape
         K = self.n_components
 
@@ -83,6 +88,7 @@ class SphericalCauchyMixture:
         Update the mixture parameters given responsibilities.
         Modifies self.weights, self.means, self.concentrations.
         """
+        assert self.means is not None and self.concentrations is not None
         N, K = resp.shape
 
         # 1) update mixing weights
@@ -103,7 +109,7 @@ class SphericalCauchyMixture:
                 # log‑pdf of the spherical Cauchy for all data points
                 ll = spherical_cauchy_logpdf(X, mu, rho)  # (N,)
                 # weighted sum (negative because we minimise)
-                return -np.dot(resp[:, k], ll)
+                return float(-np.dot(resp[:, k], ll))
 
             # ---- initialise from current parameters ----
             mu_init = self.means[k]  # already unit‑norm
@@ -216,15 +222,15 @@ def _maximization_step() -> None:
     raise NotImplementedError
 
 
-def normalize_rows(X: np.ndarray, eps=1e-12) -> np.ndarray:
+def normalize_rows(X: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     """L2-normalize each row of X."""
     norms: np.ndarray = np.linalg.norm(X, axis=1, keepdims=True) + eps
-    return X / norms
+    return X / norms  # type: ignore[no-any-return]
 
 
 def _init_component_weights(K: int) -> np.ndarray:
     weights: np.ndarray = np.ones(K)
-    return weights / np.sum(weights)
+    return weights / np.sum(weights)  # type: ignore[no-any-return]
 
 
 def _init_component_means(

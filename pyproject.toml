@@ -27,6 +27,15 @@ packages = ["src/spheremix"]
 [tool.uv]
 package = true
 
+[tool.mypy]
+python_version = "3.12"
+disallow_untyped_defs = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = "scipy.*"
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 88
 
