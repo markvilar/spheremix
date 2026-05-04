@@ -59,7 +59,7 @@ class SphericalCauchyMixture:
     log_likelihood: float = field(default=-np.inf, init=False)
     n_iter: int = field(default=0, init=False)
 
-    def expectation_step(self, X: np.ndarray) -> np.ndarray:
+    def _expectation_step(self, X: np.ndarray) -> np.ndarray:
         """
         Compute responsibilities r_{nk} = p(z=k | x_n, Θ).
         Returns an array of shape (N, K).
@@ -92,7 +92,7 @@ class SphericalCauchyMixture:
 
         return resp
 
-    def maximization_step(
+    def _maximization_step(
         self,
         X: np.ndarray,
         resp: np.ndarray,
@@ -182,16 +182,50 @@ class SphericalCauchyMixture:
         for i in range(max_iter):
             # E‑step
             logger.info("Expectation step:")
-            responsibilities = self.expectation_step(X)  # (N, K)
+            responsibilities = self._expectation_step(X)  # (N, K)
 
             # M‑step
             logger.info("Maximization step:")
-            self.maximization_step(X, responsibilities)
+            self._maximization_step(X, responsibilities)
 
             if self._check_convergence(X, i, tol, rtol, verbose):
                 break
 
             self.n_iter += 1
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """
+        Compute posterior probabilities p(z=k | x_n, Θ) for each sample.
+        Returns an array of shape (N, K).
+        """
+        if self.weights is None or self.means is None or self.concentrations is None:
+            raise ValueError(
+                "Model is not fitted yet. Call fit() before predict_proba()."
+            )
+        return self._expectation_step(X)
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        Assign each sample to the most probable component.
+        Returns an array of shape (N,) with integer component indices.
+        """
+        return self.predict_proba(X).argmax(axis=1)  # type: ignore[no-any-return]
+
+    def fit_predict(
+        self,
+        X: np.ndarray,
+        max_iter: int = 100,
+        tol: float = 1e-4,
+        rtol: float = 1e-6,
+        verbose: bool = False,
+    ) -> np.ndarray:
+        """
+        Fit the model and return hard component assignments.
+        Equivalent to calling fit() followed by predict(X).
+        Returns an array of shape (N,) with integer component indices.
+        """
+        self.fit(X, max_iter=max_iter, tol=tol, rtol=rtol, verbose=verbose)
+        return self.predict(X)
 
     def _check_convergence(
         self,
