@@ -11,6 +11,7 @@ Usage
 """
 
 import sys
+import time
 
 import click
 import numpy as np
@@ -61,6 +62,13 @@ logger.add(
     help="Concentration parameter used when generating samples (0=uniform, →1=peaked).",
 )
 @click.option(
+    "--init",
+    default="random",
+    show_default=True,
+    type=click.Choice(["random", "kmeans"]),
+    help="Mean initialization strategy for EM.",
+)
+@click.option(
     "--max-iter",
     default=100,
     show_default=True,
@@ -72,7 +80,14 @@ logger.add(
     default=1e-4,
     show_default=True,
     type=float,
-    help="Log-likelihood convergence tolerance for EM.",
+    help="Absolute log-likelihood convergence tolerance for EM.",
+)
+@click.option(
+    "--rtol",
+    default=1e-6,
+    show_default=True,
+    type=float,
+    help="Relative log-likelihood convergence tolerance for EM.",
 )
 @click.option(
     "--seed",
@@ -93,8 +108,10 @@ def main(
     n_samples: int,
     n_features: int,
     rho: float,
+    init: str,
     max_iter: int,
     tol: float,
+    rtol: float,
     seed: int,
     verbose: bool,
 ) -> None:
@@ -129,10 +146,15 @@ def main(
     # ------------------------------------------------------------------
     logger.info(
         f"Fitting SphericalCauchyMixture — "
-        f"K={n_components}, max_iter={max_iter}, tol={tol}"
+        f"K={n_components}, init={init}, max_iter={max_iter}, tol={tol}, rtol={rtol}"
     )
-    model: SphericalCauchyMixture = SphericalCauchyMixture(n_components=n_components)
-    model.fit(X, max_iter=max_iter, tol=tol, verbose=verbose)
+    model: SphericalCauchyMixture = SphericalCauchyMixture(
+        n_components=n_components,
+        init=init,  # type: ignore[arg-type]
+    )
+    t0: float = time.perf_counter()
+    model.fit(X, max_iter=max_iter, tol=tol, rtol=rtol, verbose=verbose)
+    fit_time: float = time.perf_counter() - t0
     logger.info(
         f"EM finished — iterations: {model.n_iter}, "
         f"log-likelihood: {model.log_likelihood:.4f}"
@@ -145,7 +167,7 @@ def main(
     assert model.means is not None
     assert model.concentrations is not None
 
-    resp: np.ndarray = model.expectation_step(X)   # (N, K)
+    resp: np.ndarray = model.expectation_step(X)  # (N, K)
     assignments: np.ndarray = resp.argmax(axis=1)  # (N,)
 
     # ------------------------------------------------------------------
@@ -170,7 +192,9 @@ def main(
         logger.info(f"  n_assigned  : {n_assigned} ({100 * n_assigned / N:.1f}%)")
 
         if n_assigned == 0:
-            logger.warning(f"  Component {k} has no assigned samples — skipping density stats.")
+            logger.warning(
+                f"  Component {k} has no assigned samples — skipping density stats."
+            )
             continue
 
         log_dens: np.ndarray = spherical_cauchy_logpdf(X[mask], mu_k, rho_k)
@@ -180,6 +204,9 @@ def main(
             f"min={log_dens.min():.4f}  "
             f"max={log_dens.max():.4f}"
         )
+
+    logger.info("-" * 60)
+    logger.info(f"Fit time: {fit_time:.3f}s")
 
 
 if __name__ == "__main__":

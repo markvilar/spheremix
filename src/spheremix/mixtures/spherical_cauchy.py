@@ -5,11 +5,13 @@ Module for Spherical Cauchy mixture model.
 import numpy as np
 
 from dataclasses import dataclass, field
+from typing import Literal
 from loguru import logger
 from scipy.optimize import minimize
 from spheremix.distributions import SphericalCauchyDistribution
 from spheremix.distributions import spherical_cauchy_logkernel
 from spheremix.distributions import spherical_cauchy_logpdf
+from .initializer import MeanInitStrategy, create_mean_initializer
 
 
 @dataclass(slots=True)
@@ -18,8 +20,15 @@ class SphericalCauchyMixtureState:
     State holding component weights and parameters for a Spherical Cauchy mixture model.
     """
 
-    component_weights: list[float] = field(default_factory=list)
-    component_params: list[SphericalCauchyDistribution] = field(default_factory=list)
+    component_weights: tuple[float, ...]
+    component_params: tuple[SphericalCauchyDistribution, ...]
+
+    @property
+    def n_components(self) -> int:
+        """
+        Return the number of components in the mixture.
+        """
+        return len(self.component_weights)
 
 
 @dataclass(slots=True)
@@ -37,12 +46,16 @@ class SphericalCauchyMixture:
         numpy array with shape (K,)
     """
 
+    # Mixture configuration
     n_components: int
+    init: Literal["random", "kmeans"] | MeanInitStrategy = "random"
+
+    # Mixture state — set by fit()
     weights: np.ndarray | None = None
     means: np.ndarray | None = None
     concentrations: np.ndarray | None = None
 
-    # optional: bookkeeping for convergence
+    # Bookkeeping for convergence — set by fit()
     log_likelihood: float = field(default=-np.inf, init=False)
     n_iter: int = field(default=0, init=False)
 
@@ -140,6 +153,7 @@ class SphericalCauchyMixture:
         X: np.ndarray,
         max_iter: int = 100,
         tol: float = 1e-4,
+        rtol: float = 1e-6,
         verbose: bool = False,
     ) -> None:
         """
@@ -148,24 +162,21 @@ class SphericalCauchyMixture:
         ``concentrations`` hold the learned parameters.
         """
         K: int = self.n_components
-        N: int = X.shape[0]
         D: int = X.shape[1]
+
+        if D < 2:
+            raise ValueError("number of features must be 2 or higher")
+
+        mean_init: MeanInitStrategy = (
+            create_mean_initializer(self.init)
+            if isinstance(self.init, str)
+            else self.init
+        )
 
         # Initialize weights, means, and concentrations
         self.weights = _init_component_weights(K)
-        self.means = _init_component_means(K, D)
+        self.means = mean_init(X, K)
         self.concentrations = _init_component_concentrations(K)
-
-        logger.info(f"K: {K}")
-        logger.info(f"N: {N}")
-        logger.info(f"D: {D}")
-
-        logger.info(f"Initial weights:          {self.weights}")
-        logger.info(f"Initial means:            {self.means.shape}")
-        logger.info(f"Initial concentrations:   {self.concentrations.shape}")
-
-        logger.info(f"Means:        {self.means}")
-        logger.info(f"Means norm:   {np.linalg.norm(self.means, axis=1)}")
 
         # ----- EM loop --------------------------------------------------
         for i in range(max_iter):
@@ -177,13 +188,46 @@ class SphericalCauchyMixture:
             logger.info("Maximization step:")
             self.maximization_step(X, responsibilities)
 
-            # ----- compute observed‑data log‑likelihood (for convergence) -----
-            # Using log‑sum‑exp for stability:
-            #   loglik = Σ_n log Σ_k w_k * exp(logpdf_k(x_n))
-            loglik = 0.0
-            for n in range(N):
-                # compute log of mixture density for a single datum
-                log_dense = np.logaddexp.reduce(
+            if self._check_convergence(X, i, tol, rtol, verbose):
+                break
+
+            self.n_iter += 1
+
+    def _check_convergence(
+        self,
+        X: np.ndarray,
+        iteration: int,
+        tol: float,
+        rtol: float,
+        verbose: bool,
+    ) -> bool:
+        """
+        Compute the observed-data log-likelihood, log progress, check for
+        convergence, and update ``self.log_likelihood``.
+
+        Convergence is declared when either the absolute change in
+        log-likelihood is below ``tol``, or the relative change is below
+        ``rtol``.  Using both criteria makes the check robust across
+        problem scales: the absolute criterion catches near-zero likelihoods
+        while the relative criterion handles high-dimensional data where the
+        log-likelihood magnitude grows with D and N.
+
+        Returns True if either convergence criterion is satisfied.
+        """
+        assert (
+            self.weights is not None
+            and self.means is not None
+            and self.concentrations is not None
+        )
+        K: int = self.n_components
+        N: int = X.shape[0]
+
+        # log Σ_k w_k * p_k(x_n) for each n, summed over n.
+        # Computed sample-by-sample with log-sum-exp for numerical stability.
+        loglik: float = 0.0
+        for n in range(N):
+            log_dense: float = float(
+                np.logaddexp.reduce(
                     [
                         np.log(self.weights[k])
                         + spherical_cauchy_logkernel(
@@ -192,20 +236,22 @@ class SphericalCauchyMixture:
                         for k in range(K)
                     ]
                 )
-                loglik += log_dense
-            # loglik now holds Σ_n log p(x_n)
+            )
+            loglik += log_dense
 
-            if verbose:
-                logger.info(f"Iter {i:03d} – loglik = {loglik:.5f}")
+        if verbose:
+            logger.info(f"Iter {iteration:03d} – loglik = {loglik:.5f}")
 
-            # convergence check
-            if np.abs(loglik - self.log_likelihood) < tol:
-                if verbose:
-                    logger.info("Converged!")
-                break
+        delta: float = abs(loglik - self.log_likelihood)
+        abs_converged: bool = delta < tol
+        rel_converged: bool = delta < rtol * max(abs(self.log_likelihood), 1.0)
+        converged: bool = abs_converged or rel_converged
 
-            self.log_likelihood = loglik
-            self.n_iter += 1
+        if converged and verbose:
+            logger.info("Converged!")
+
+        self.log_likelihood = loglik
+        return converged
 
 
 def _expectation_step() -> None:
@@ -222,25 +268,9 @@ def _maximization_step() -> None:
     raise NotImplementedError
 
 
-def normalize_rows(X: np.ndarray, eps: float = 1e-12) -> np.ndarray:
-    """L2-normalize each row of X."""
-    norms: np.ndarray = np.linalg.norm(X, axis=1, keepdims=True) + eps
-    return X / norms  # type: ignore[no-any-return]
-
-
 def _init_component_weights(K: int) -> np.ndarray:
     weights: np.ndarray = np.ones(K)
     return weights / np.sum(weights)  # type: ignore[no-any-return]
-
-
-def _init_component_means(
-    K: int, D: int, low: float = 0.0, high: float = 1.0
-) -> np.ndarray:
-    means: np.ndarray = np.random.uniform(low=0.0, high=1.0, size=(K, D))
-    if D == 1:
-        return means
-    else:
-        return normalize_rows(means)
 
 
 def _init_component_concentrations(K: int) -> np.ndarray:
