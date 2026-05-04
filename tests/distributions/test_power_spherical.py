@@ -4,8 +4,8 @@ Tests for the spheremix.distributions.power_spherical public API.
 
 import numpy as np
 import pytest
-from numpy.testing import assert_allclose
 
+from numpy.testing import assert_allclose
 from spheremix.distributions import (
     PowerSphericalDistribution,
     power_spherical_logkernel,

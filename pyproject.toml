@@ -9,7 +9,6 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "click>=8.3.2",
-    "joblib>=1.5.3",
     "loguru>=0.7.3",
     "numpy>=2.4.3",
     "pytest>=8.3.4",

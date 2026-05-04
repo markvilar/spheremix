@@ -7,7 +7,6 @@ import numpy as np
 from dataclasses import dataclass, field
 from loguru import logger
 from scipy.optimize import minimize
-
 from spheremix.distributions import SphericalCauchyDistribution
 from spheremix.distributions import spherical_cauchy_logkernel
 from spheremix.distributions import spherical_cauchy_logpdf
