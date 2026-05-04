@@ -202,6 +202,20 @@ class SphericalCauchyMixture:
             self.n_iter += 1
 
 
+def _expectation_step() -> None:
+    """
+    Performs the expectation step of the EM algorithm.
+    """
+    raise NotImplementedError
+
+
+def _maximization_step() -> None:
+    """
+    Performs the maximization step of the EM algorithm.
+    """
+    raise NotImplementedError
+
+
 def normalize_rows(X: np.ndarray, eps=1e-12) -> np.ndarray:
     """L2-normalize each row of X."""
     norms: np.ndarray = np.linalg.norm(X, axis=1, keepdims=True) + eps
