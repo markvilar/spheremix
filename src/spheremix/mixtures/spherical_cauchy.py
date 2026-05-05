@@ -195,6 +195,67 @@ def fit_spherical_cauchy_mixture(
 # ---------------------------------------------------------------------------
 
 
+def _compute_log_joint_densities(
+    X: np.ndarray,
+    weights: np.ndarray,
+    means: np.ndarray,
+    concentrations: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute log p(x_n, z=k | Θ) = log w_k + log_kernel(x_n | μ_k, ρ_k) for all
+    samples and components. Returns shape (N, K).
+
+    Values use the log-kernel rather than the log-pdf, so they are offset by the
+    rho-dependent normalising constant of the Spherical Cauchy distribution.
+    """
+    K: int = len(weights)
+    N: int = X.shape[0]
+
+    log_joint: np.ndarray = np.empty((N, K))
+    for k in range(K):
+        log_kernel: np.ndarray = spherical_cauchy_logkernel(
+            X, means[k], concentrations[k]
+        )
+        log_joint[:, k] = np.log(weights[k]) + log_kernel
+
+    return log_joint  # type: ignore[no-any-return]
+
+
+def _compute_log_marginal_density(
+    X: np.ndarray,
+    weights: np.ndarray,
+    means: np.ndarray,
+    concentrations: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute log(Σ_k w_k · kernel_k(x_n)) for each sample. Returns shape (N,).
+
+    Values are non-normalised (see _compute_log_joint_densities), so the result
+    is valid for convergence checking but is not the true log-likelihood.
+    """
+    log_joint: np.ndarray = _compute_log_joint_densities(
+        X, weights, means, concentrations
+    )
+    return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
+
+
+def _compute_posterior_densities(
+    X: np.ndarray,
+    weights: np.ndarray,
+    means: np.ndarray,
+    concentrations: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute p(z=k | x_n, Θ) for all samples via log-sum-exp. Returns shape (N, K).
+    """
+    log_joint: np.ndarray = _compute_log_joint_densities(
+        X, weights, means, concentrations
+    )
+    log_marginal: np.ndarray = np.logaddexp.reduce(log_joint, axis=1)
+    log_resp: np.ndarray = log_joint - log_marginal[:, np.newaxis]
+    return np.exp(log_resp)  # type: ignore[no-any-return]
+
+
 def _compute_responsibilities(
     X: np.ndarray,
     weights: np.ndarray,
@@ -202,21 +263,9 @@ def _compute_responsibilities(
     concentrations: np.ndarray,
 ) -> np.ndarray:
     """
-    Compute r_{nk} = p(z=k | x_n, Θ) for all samples via log-sum-exp. Returns (N, K).
+    EM-specific alias for _compute_posterior_densities. Returns shape (N, K).
     """
-    N: int = X.shape[0]
-    K: int = len(weights)
-
-    log_resp: np.ndarray = np.empty((N, K))
-    for k in range(K):
-        log_kernel: np.ndarray = spherical_cauchy_logkernel(
-            X, means[k], concentrations[k]
-        )
-        log_resp[:, k] = np.log(weights[k]) + log_kernel
-
-    log_norm: np.ndarray = np.logaddexp.reduce(log_resp, axis=1, keepdims=True)
-    log_resp -= log_norm
-    return np.exp(log_resp)  # type: ignore[no-any-return]
+    return _compute_posterior_densities(X, weights, means, concentrations)  # type: ignore[no-any-return]
 
 
 def _maximization_step(
@@ -281,23 +330,9 @@ def _check_convergence(
     Compute observed-data log-likelihood and check absolute and relative convergence.
     Returns (converged, loglik).
     """
-    K: int = len(weights)
-    N: int = X.shape[0]
-
-    loglik: float = 0.0
-    for n in range(N):
-        log_dense: float = float(
-            np.logaddexp.reduce(
-                [
-                    np.log(weights[k])
-                    + spherical_cauchy_logkernel(
-                        X[n : n + 1], means[k], concentrations[k]
-                    ).squeeze()
-                    for k in range(K)
-                ]
-            )
-        )
-        loglik += log_dense
+    loglik: float = float(
+        _compute_log_marginal_density(X, weights, means, concentrations).sum()
+    )
 
     if verbose:
         logger.info(f"Iter {iteration:03d} – loglik = {loglik:.5f}")
