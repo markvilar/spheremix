@@ -19,7 +19,11 @@ from .spherical_cauchy import (
 )
 
 from .vonmises import (
-    log_von_mises_pdf as log_von_mises_pdf,
+    VonMisesFisherDistribution as VonMisesFisherDistribution,
+    sample_von_mises_fisher as sample_von_mises_fisher,
+    von_mises_fisher_logkernel as von_mises_fisher_logkernel,
+    von_mises_fisher_logpdf as von_mises_fisher_logpdf,
+    von_mises_fisher_pdf as von_mises_fisher_pdf,
 )
 
 from .power_spherical import (
