@@ -52,10 +52,6 @@ def _log_cauchy_stats(
     model: SphericalCauchyMixture,
     assignments: np.ndarray,
 ) -> None:
-    assert model.weights is not None
-    assert model.means is not None
-    assert model.concentrations is not None
-
     N: int = X.shape[0]
     K: int = model.n_components
 
@@ -66,9 +62,9 @@ def _log_cauchy_stats(
     for k in range(K):
         mask: np.ndarray = assignments == k
         n_assigned: int = int(mask.sum())
-        weight_k: float = float(model.weights[k])
-        mu_k: np.ndarray = model.means[k]
-        rho_k: float = float(model.concentrations[k])
+        weight_k: float = float(model.get_params().weights[k])
+        mu_k: np.ndarray = model.get_params().means[k]
+        rho_k: float = float(model.get_params().concentrations[k])
 
         logger.info(f"Component {k}:")
         logger.info(f"  weight      : {weight_k:.4f}")
@@ -77,7 +73,9 @@ def _log_cauchy_stats(
         logger.info(f"  n_assigned  : {n_assigned} ({100 * n_assigned / N:.1f}%)")
 
         if n_assigned == 0:
-            logger.warning(f"  Component {k} has no assigned samples — skipping density stats.")
+            logger.warning(
+                f"  Component {k} has no assigned samples — skipping density stats."
+            )
             continue
 
         log_dens: np.ndarray = spherical_cauchy_logpdf(X[mask], mu_k, rho_k)
@@ -129,19 +127,43 @@ def _log_kmeans_stats(
         logger.info(f"  inertia        : {inertia_k:.4f}")
 
 
+def _log_predictions(
+    labels: np.ndarray,
+    proba: np.ndarray | None = None,
+) -> None:
+    logger.info("-" * 60)
+    logger.info("Predictions")
+    logger.info("-" * 60)
+    logger.info(
+        f"  labels : shape={labels.shape}  unique={sorted(np.unique(labels).tolist())}"
+    )
+    if proba is not None:
+        logger.info(f"  proba  : shape={proba.shape}")
+        confidence: np.ndarray = proba.max(axis=1)
+        logger.info(
+            f"  confidence (max p per sample) : "
+            f"mean={confidence.mean():.4f}  "
+            f"std={confidence.std():.4f}  "
+            f"min={confidence.min():.4f}  "
+            f"max={confidence.max():.4f}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Shared options
 # ---------------------------------------------------------------------------
 
 _input_option = click.option(
-    "--input", "-i",
+    "--input",
+    "-i",
     "input_path",
     required=True,
     type=click.Path(exists=True, dir_okay=False, readable=True),
     help="Path to the input .npy file containing an N×D array.",
 )
 _n_components_option = click.option(
-    "--n-components", "-k",
+    "--n-components",
+    "-k",
     required=True,
     type=click.IntRange(min=1),
     help="Number of components / clusters.",
@@ -160,7 +182,8 @@ _seed_option = click.option(
     help="Random seed for reproducibility.",
 )
 _verbose_option = click.option(
-    "--verbose", "-v",
+    "--verbose",
+    "-v",
     is_flag=True,
     default=False,
     help="Log fitting progress.",
@@ -171,6 +194,7 @@ _verbose_option = click.option(
 # CLI group
 # ---------------------------------------------------------------------------
 
+
 @click.group()
 def cli() -> None:
     """Fit a spherical model to unit vectors loaded from a .npy file."""
@@ -179,6 +203,7 @@ def cli() -> None:
 # ---------------------------------------------------------------------------
 # cauchy subcommand
 # ---------------------------------------------------------------------------
+
 
 @cli.command()
 @_input_option
@@ -242,13 +267,14 @@ def cauchy(
     fit_time: float = time.perf_counter() - t0
 
     logger.info(
-        f"EM finished — iterations: {model.n_iter}, "
-        f"log-likelihood: {model.log_likelihood:.4f}"
+        f"EM finished — iterations: {model.n_iter_}, "
+        f"log-likelihood: {model.log_likelihood_:.4f}"
     )
 
-    resp: np.ndarray = model.expectation_step(X)
-    assignments: np.ndarray = resp.argmax(axis=1)
+    assignments: np.ndarray = model.predict(X)
+    proba: np.ndarray = model.predict_proba(X)
 
+    _log_predictions(assignments, proba)
     _log_cauchy_stats(X, model, assignments)
 
     logger.info("-" * 60)
@@ -258,6 +284,7 @@ def cauchy(
 # ---------------------------------------------------------------------------
 # kmeans subcommand
 # ---------------------------------------------------------------------------
+
 
 @cli.command()
 @_input_option

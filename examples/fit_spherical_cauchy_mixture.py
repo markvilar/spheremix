@@ -156,18 +156,14 @@ def main(
     model.fit(X, max_iter=max_iter, tol=tol, rtol=rtol, verbose=verbose)
     fit_time: float = time.perf_counter() - t0
     logger.info(
-        f"EM finished — iterations: {model.n_iter}, "
-        f"log-likelihood: {model.log_likelihood:.4f}"
+        f"EM finished — iterations: {model.n_iter_}, "
+        f"log-likelihood: {model.log_likelihood_:.4f}"
     )
 
     # ------------------------------------------------------------------
-    # 3. Assign samples to clusters via the E-step responsibilities
+    # 3. Assign samples to clusters via responsibilities
     # ------------------------------------------------------------------
-    assert model.weights is not None
-    assert model.means is not None
-    assert model.concentrations is not None
-
-    resp: np.ndarray = model.expectation_step(X)  # (N, K)
+    resp: np.ndarray = model.predict_proba(X)  # (N, K)
     assignments: np.ndarray = resp.argmax(axis=1)  # (N,)
 
     # ------------------------------------------------------------------
@@ -181,9 +177,9 @@ def main(
         mask: np.ndarray = assignments == k
         n_assigned: int = int(mask.sum())
 
-        weight_k: float = float(model.weights[k])
-        mu_k: np.ndarray = model.means[k]
-        rho_k: float = float(model.concentrations[k])
+        weight_k: float = float(model.get_params().weights[k])
+        mu_k: np.ndarray = model.get_params().means[k]
+        rho_k: float = float(model.get_params().concentrations[k])
 
         logger.info(f"Component {k}:")
         logger.info(f"  weight      : {weight_k:.4f}")
