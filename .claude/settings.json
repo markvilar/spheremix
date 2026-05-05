@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "python-library-complete@python-library-dev": true
+  }
+}
