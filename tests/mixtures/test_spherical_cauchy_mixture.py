@@ -173,6 +173,7 @@ def test_from_dict_restores_arrays_as_ndarray(
     fitted_model: SphericalCauchyMixture,
 ) -> None:
     restored = SphericalCauchyMixture.from_dict(fitted_model.to_dict())
+    assert restored.params_ is not None
     assert isinstance(restored.params_.weights, np.ndarray)
     assert isinstance(restored.params_.means, np.ndarray)
     assert isinstance(restored.params_.concentrations, np.ndarray)
@@ -180,6 +181,8 @@ def test_from_dict_restores_arrays_as_ndarray(
 
 def test_from_dict_restored_arrays_match(fitted_model: SphericalCauchyMixture) -> None:
     restored = SphericalCauchyMixture.from_dict(fitted_model.to_dict())
+    assert restored.params_ is not None
+    assert fitted_model.params_ is not None
     assert_allclose(restored.params_.weights, fitted_model.params_.weights)
     assert_allclose(restored.params_.means, fitted_model.params_.means)
     assert_allclose(
@@ -222,6 +225,8 @@ def test_json_roundtrip_fitted(fitted_model: SphericalCauchyMixture) -> None:
     restored = SphericalCauchyMixture.from_dict(
         json.loads(json.dumps(fitted_model.to_dict()))
     )
+    assert restored.params_ is not None
+    assert fitted_model.params_ is not None
     assert_allclose(restored.params_.weights, fitted_model.params_.weights)
     assert_allclose(restored.params_.means, fitted_model.params_.means)
     assert_allclose(
