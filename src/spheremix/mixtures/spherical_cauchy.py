@@ -10,6 +10,7 @@ from typing import Literal
 from loguru import logger
 from spheremix.distributions import spherical_cauchy_logkernel
 from spheremix.distributions import spherical_cauchy_logpdf
+from .base import SerializableMixin
 from .initializer import MeanInitStrategy, create_mean_initializer
 
 
@@ -19,7 +20,7 @@ from .initializer import MeanInitStrategy, create_mean_initializer
 
 
 @dataclass(slots=True, frozen=True)
-class SphericalCauchyMixtureComponents:
+class SphericalCauchyMixtureParams:
     """
     Fitted parameters for a Spherical Cauchy mixture model.
 
@@ -37,6 +38,14 @@ class SphericalCauchyMixtureComponents:
     means: np.ndarray
     concentrations: np.ndarray
 
+    def to_dict(self) -> dict:
+        """Serialize to a JSON-compatible dict with nested Python lists."""
+        return {
+            "weights": self.weights.tolist(),
+            "means": self.means.tolist(),
+            "concentrations": self.concentrations.tolist(),
+        }
+
 
 # ---------------------------------------------------------------------------
 # Mixture model — facade; delegates EM to fit_spherical_cauchy_mixture()
@@ -44,7 +53,7 @@ class SphericalCauchyMixtureComponents:
 
 
 @dataclass(slots=True)
-class SphericalCauchyMixture:
+class SphericalCauchyMixture(SerializableMixin):
     """
     Mixture model of Spherical Cauchy distributions.
 
@@ -66,10 +75,10 @@ class SphericalCauchyMixture:
     """
 
     n_components: int
-    init: Literal["random", "kmeans"] | MeanInitStrategy = "random"
+    init: Literal["random", "kmeans"] = "random"
 
     # Fitted state — set by fit(), replaced atomically on each call
-    params_: SphericalCauchyMixtureComponents | None = field(default=None, init=False)
+    params_: SphericalCauchyMixtureParams | None = field(default=None, init=False)
     log_likelihood_: float = field(default=-np.inf, init=False)
     n_iter_: int = field(default=0, init=False)
 
@@ -95,7 +104,7 @@ class SphericalCauchyMixture:
             verbose=verbose,
         )
 
-    def get_params(self) -> SphericalCauchyMixtureComponents:
+    def get_params(self) -> SphericalCauchyMixtureParams:
         """
         Return the fitted mixture components.
         Raises ``ValueError`` if the model has not been fitted yet.
@@ -134,6 +143,31 @@ class SphericalCauchyMixture:
         self.fit(X, max_iter=max_iter, tol=tol, rtol=rtol, verbose=verbose)
         return self.predict(X)
 
+    def _params_to_dict(self) -> dict:
+        return {
+            "n_components": self.n_components,
+            "init": self.init,
+            "log_likelihood_": self.log_likelihood_,
+            "n_iter_": self.n_iter_,
+            "params_": self.params_.to_dict() if self.params_ is not None else None,
+        }
+
+    @classmethod
+    def _params_from_dict(cls, data: dict) -> "SphericalCauchyMixture":
+        model = cls(n_components=data["n_components"], init=data["init"])
+        model.log_likelihood_ = data["log_likelihood_"]
+        model.n_iter_ = data["n_iter_"]
+
+        if data["params_"] is not None:
+            p = data["params_"]
+            model.params_ = SphericalCauchyMixtureParams(
+                weights=np.array(p["weights"]),
+                means=np.array(p["means"]),
+                concentrations=np.array(p["concentrations"]),
+            )
+
+        return model
+
 
 # ---------------------------------------------------------------------------
 # Fitter function — owns all EM logic
@@ -148,7 +182,7 @@ def fit_spherical_cauchy_mixture(
     tol: float = 1e-4,
     rtol: float = 1e-6,
     verbose: bool = False,
-) -> tuple[SphericalCauchyMixtureComponents, float, int]:
+) -> tuple[SphericalCauchyMixtureParams, float, int]:
     """
     Fit a Spherical Cauchy mixture model via EM.
 
@@ -182,7 +216,7 @@ def fit_spherical_cauchy_mixture(
         if converged:
             break
 
-    components = SphericalCauchyMixtureComponents(
+    components = SphericalCauchyMixtureParams(
         weights=weights,
         means=means,
         concentrations=concentrations,
