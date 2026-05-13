@@ -2,7 +2,7 @@
 Base protocol and serialization mixin for spherical mixture models.
 """
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from importlib.metadata import version as _get_version
 from typing import Any, Protocol, Self, runtime_checkable
 
@@ -38,7 +38,7 @@ class SphericalMixtureBase(Protocol):
 # ---------------------------------------------------------------------------
 
 
-class SerializableMixin:
+class SerializableMixin(ABC):
     """
     Mixin that provides ``to_dict`` / ``from_dict`` serialization.
 
@@ -106,8 +106,10 @@ class SerializableMixin:
     @abstractmethod
     def _params_to_dict(self) -> dict:
         """Return a dict of the subclass-specific parameters."""
+        ...
 
     @classmethod
     @abstractmethod
     def _params_from_dict(cls, data: dict) -> Self:
         """Reconstruct an instance from the subclass-specific parameters in ``data``."""
+        ...
