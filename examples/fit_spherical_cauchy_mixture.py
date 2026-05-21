@@ -151,9 +151,13 @@ def main(
     model: SphericalCauchyMixture = SphericalCauchyMixture(
         n_components=n_components,
         init=init,  # type: ignore[arg-type]
+        max_iter=max_iter,
+        tol=tol,
+        rtol=rtol,
+        verbose=verbose,
     )
     t0: float = time.perf_counter()
-    model.fit(X, max_iter=max_iter, tol=tol, rtol=rtol, verbose=verbose)
+    model.fit(X)
     fit_time: float = time.perf_counter() - t0
     logger.info(
         f"EM finished — iterations: {model.n_iter_}, "
