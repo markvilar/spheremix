@@ -110,7 +110,7 @@ def test_to_dict_type_tag(unfitted_model: SphericalCauchyMixture) -> None:
 
 
 def test_to_dict_version(unfitted_model: SphericalCauchyMixture) -> None:
-    assert unfitted_model.to_dict()["version"] == 1
+    assert unfitted_model.to_dict()["version"] == 2
 
 
 def test_to_dict_spheremix_version(unfitted_model: SphericalCauchyMixture) -> None:
@@ -118,10 +118,16 @@ def test_to_dict_spheremix_version(unfitted_model: SphericalCauchyMixture) -> No
 
 
 def test_to_dict_hyperparameters() -> None:
-    model = SphericalCauchyMixture(n_components=3, init="kmeans")
+    model = SphericalCauchyMixture(
+        n_components=3, init="kmeans", max_iter=50, tol=1e-3, rtol=1e-5, verbose=True
+    )
     d = model.to_dict()
     assert d["n_components"] == 3
     assert d["init"] == "kmeans"
+    assert d["max_iter"] == 50
+    assert d["tol"] == pytest.approx(1e-3)
+    assert d["rtol"] == pytest.approx(1e-5)
+    assert d["verbose"] is True
 
 
 def test_to_dict_unfitted_params_is_none(
@@ -148,10 +154,16 @@ def test_to_dict_json_serializable(fitted_model: SphericalCauchyMixture) -> None
 
 
 def test_from_dict_restores_hyperparameters() -> None:
-    model = SphericalCauchyMixture(n_components=3, init="kmeans")
+    model = SphericalCauchyMixture(
+        n_components=3, init="kmeans", max_iter=50, tol=1e-3, rtol=1e-5, verbose=True
+    )
     restored = SphericalCauchyMixture.from_dict(model.to_dict())
     assert restored.n_components == 3
     assert restored.init == "kmeans"
+    assert restored.max_iter == 50
+    assert restored.tol == pytest.approx(1e-3)
+    assert restored.rtol == pytest.approx(1e-5)
+    assert restored.verbose is True
 
 
 def test_from_dict_restores_unfitted_state(

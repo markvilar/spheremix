@@ -6,7 +6,7 @@ import numpy as np
 import scipy.optimize
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import ClassVar, Literal, Self
 from loguru import logger
 from spheremix.distributions import spherical_cauchy_logkernel
 from spheremix.distributions import spherical_cauchy_logpdf
@@ -66,6 +66,14 @@ class SphericalCauchyMixture(SerializableMixin):
         Number of mixture components.
     init:
         Mean initialization strategy.
+    max_iter:
+        Maximum number of EM iterations.
+    tol:
+        Absolute log-likelihood convergence tolerance.
+    rtol:
+        Relative log-likelihood convergence tolerance.
+    verbose:
+        Log EM iteration progress.
     params_:
         Fitted mixture components; ``None`` until ``fit()`` is called.
     log_likelihood_:
@@ -74,22 +82,21 @@ class SphericalCauchyMixture(SerializableMixin):
         Number of EM iterations performed.
     """
 
+    _SERIAL_VERSION: ClassVar[int] = 2
+
     n_components: int
     init: Literal["random", "kmeans"] = "random"
+    max_iter: int = 100
+    tol: float = 1e-4
+    rtol: float = 1e-6
+    verbose: bool = False
 
     # Fitted state — set by fit(), replaced atomically on each call
     params_: SphericalCauchyMixtureParams | None = field(default=None, init=False)
     log_likelihood_: float = field(default=-np.inf, init=False)
     n_iter_: int = field(default=0, init=False)
 
-    def fit(
-        self,
-        X: np.ndarray,
-        max_iter: int = 100,
-        tol: float = 1e-4,
-        rtol: float = 1e-6,
-        verbose: bool = False,
-    ) -> None:
+    def fit(self, X: np.ndarray, y: np.ndarray | None = None) -> Self:
         """
         Run EM until convergence or ``max_iter``.
         Updates ``params_``, ``log_likelihood_``, and ``n_iter_``.
@@ -98,11 +105,12 @@ class SphericalCauchyMixture(SerializableMixin):
             X,
             n_components=self.n_components,
             init=self.init,
-            max_iter=max_iter,
-            tol=tol,
-            rtol=rtol,
-            verbose=verbose,
+            max_iter=self.max_iter,
+            tol=self.tol,
+            rtol=self.rtol,
+            verbose=self.verbose,
         )
+        return self
 
     def get_params(self) -> SphericalCauchyMixtureParams:
         """
@@ -128,25 +136,21 @@ class SphericalCauchyMixture(SerializableMixin):
         """
         return self.predict_proba(X).argmax(axis=1)  # type: ignore[no-any-return]
 
-    def fit_predict(
-        self,
-        X: np.ndarray,
-        max_iter: int = 100,
-        tol: float = 1e-4,
-        rtol: float = 1e-6,
-        verbose: bool = False,
-    ) -> np.ndarray:
+    def fit_predict(self, X: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
         """
         Fit the model and return hard component assignments.
         Returns an array of shape (N,) with integer component indices.
         """
-        self.fit(X, max_iter=max_iter, tol=tol, rtol=rtol, verbose=verbose)
-        return self.predict(X)
+        return self.fit(X).predict(X)
 
     def _params_to_dict(self) -> dict:
         return {
             "n_components": self.n_components,
             "init": self.init,
+            "max_iter": self.max_iter,
+            "tol": self.tol,
+            "rtol": self.rtol,
+            "verbose": self.verbose,
             "log_likelihood_": self.log_likelihood_,
             "n_iter_": self.n_iter_,
             "params_": self.params_.to_dict() if self.params_ is not None else None,
@@ -154,7 +158,14 @@ class SphericalCauchyMixture(SerializableMixin):
 
     @classmethod
     def _params_from_dict(cls, data: dict) -> "SphericalCauchyMixture":
-        model = cls(n_components=data["n_components"], init=data["init"])
+        model = cls(
+            n_components=data["n_components"],
+            init=data["init"],
+            max_iter=data["max_iter"],
+            tol=data["tol"],
+            rtol=data["rtol"],
+            verbose=data["verbose"],
+        )
         model.log_likelihood_ = data["log_likelihood_"]
         model.n_iter_ = data["n_iter_"]
 

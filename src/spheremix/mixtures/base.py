@@ -4,7 +4,7 @@ Base protocol and serialization mixin for spherical mixture models.
 
 from abc import ABC, abstractmethod
 from importlib.metadata import version as _get_version
-from typing import Any, Protocol, Self, runtime_checkable
+from typing import ClassVar, Protocol, Self, runtime_checkable
 
 import numpy as np
 
@@ -24,13 +24,13 @@ class SphericalMixtureBase(Protocol):
     without requiring explicit inheritance.
     """
 
-    def fit(self, X: np.ndarray, **kwargs: Any) -> None: ...
+    def fit(self, X: np.ndarray, y: np.ndarray | None = None) -> Self: ...
 
     def predict(self, X: np.ndarray) -> np.ndarray: ...
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray: ...
 
-    def fit_predict(self, X: np.ndarray, **kwargs: Any) -> np.ndarray: ...
+    def fit_predict(self, X: np.ndarray, y: np.ndarray | None = None) -> np.ndarray: ...
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ class SerializableMixin(ABC):
         in a backward-incompatible way.
     """
 
-    _SERIAL_VERSION: int = 1
+    _SERIAL_VERSION: ClassVar[int] = 1
 
     def to_dict(self) -> dict:
         """
