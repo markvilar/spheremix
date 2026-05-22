@@ -13,6 +13,9 @@ from .spherical_cauchy import SphericalCauchyMixture as SphericalCauchyMixture
 from .spherical_cauchy import (
     fit_spherical_cauchy_mixture as fit_spherical_cauchy_mixture,
 )
+from .pkbd import PKBMixtureParams as PKBMixtureParams
+from .pkbd import PKBMixture as PKBMixture
+from .pkbd import fit_pkbd_mixture as fit_pkbd_mixture
 
 from .power_spherical import PowerSphericalMixtureParams as PowerSphericalMixtureParams
 from .power_spherical import PowerSphericalMixture as PowerSphericalMixture
