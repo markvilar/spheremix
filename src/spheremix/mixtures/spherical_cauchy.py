@@ -143,6 +143,77 @@ class SphericalCauchyMixture(SerializableMixin):
         """
         return self.fit(X).predict(X)
 
+    def aic(self, X: np.ndarray) -> float:
+        """
+        Akaike Information Criterion for the fitted model on X.
+
+        Lower is better. Penalises complexity with ``2 × n_parameters``.
+        Requires the model to be fitted.
+
+        Parameters
+        ----------
+        X:
+            Unit-vector data, shape (N, D).
+
+        Returns
+        -------
+        float
+        """
+        n_params = self.n_components * (X.shape[1] + 1) - 1
+        return float(-2.0 * self.score_samples(X).sum() + 2.0 * n_params)
+
+    def bic(self, X: np.ndarray) -> float:
+        """
+        Bayesian Information Criterion for the fitted model on X.
+
+        Lower is better. Penalises complexity with ``n_parameters × log(N)``.
+        Requires the model to be fitted.
+
+        Parameters
+        ----------
+        X:
+            Unit-vector data, shape (N, D).
+
+        Returns
+        -------
+        float
+        """
+        n_params = self.n_components * (X.shape[1] + 1) - 1
+        return float(-2.0 * self.score_samples(X).sum() + n_params * np.log(X.shape[0]))
+
+    def score_samples(self, X: np.ndarray) -> np.ndarray:
+        """Per-sample log p(x | Θ), shape (N,). Must use logpdf not logkernel —
+        the normalising constant varies with ρ and directly affects AIC/BIC."""
+        p = self.get_params()
+        K = self.n_components
+        N = X.shape[0]
+        log_joint = np.empty((N, K))
+        for k in range(K):
+            log_joint[:, k] = np.log(p.weights[k]) + spherical_cauchy_logpdf(
+                X, p.means[k], p.concentrations[k]
+            )
+        return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
+
+    def score(self, X: np.ndarray, y: np.ndarray | None = None) -> float:
+        """
+        Mean per-sample log-likelihood of X under the fitted model.
+
+        Mirrors the sklearn ``score`` convention. Higher is better.
+        Requires the model to be fitted.
+
+        Parameters
+        ----------
+        X:
+            Unit-vector data, shape (N, D).
+        y:
+            Ignored. Present for sklearn API compatibility.
+
+        Returns
+        -------
+        float
+        """
+        return float(self.score_samples(X).mean())
+
     def _params_to_dict(self) -> dict:
         return {
             "n_components": self.n_components,
@@ -266,7 +337,7 @@ def _compute_log_joint_densities(
     return log_joint  # type: ignore[no-any-return]
 
 
-def _compute_log_marginal_density(
+def _compute_log_marginal_densities(
     X: np.ndarray,
     weights: np.ndarray,
     means: np.ndarray,
@@ -376,7 +447,7 @@ def _check_convergence(
     Returns (converged, loglik).
     """
     loglik: float = float(
-        _compute_log_marginal_density(X, weights, means, concentrations).sum()
+        _compute_log_marginal_densities(X, weights, means, concentrations).sum()
     )
 
     if verbose:

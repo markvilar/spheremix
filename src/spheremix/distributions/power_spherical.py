@@ -1,10 +1,15 @@
 """
 Module for Power Spherical distribution.
 
-Implements functions to generate samples, calculate un-normalized and normalized
-log-densities.
+Power Spherical distribution on S^{d-1} with location mu and concentration
+kappa >= 0. Provides sampling, log-kernel, log-pdf, pdf, and log normalizing
+constant.
 
-The Power Spherical distribution is described in the following paper:
+Reference
+---------
+De Cao, N., & Aziz, W. (2020).
+The Power Spherical distribution.
+arXiv preprint arXiv:2006.04437.
 https://doi.org/10.48550/arXiv.2006.04437
 """
 

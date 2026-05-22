@@ -246,3 +246,136 @@ def test_json_roundtrip_fitted(fitted_model: SphericalCauchyMixture) -> None:
     )
     assert restored.log_likelihood_ == pytest.approx(fitted_model.log_likelihood_)
     assert restored.n_iter_ == fitted_model.n_iter_
+
+
+# ---------------------------------------------------------------------------
+# Shared fixture for scoring / information-criterion tests
+# ---------------------------------------------------------------------------
+
+N_SAMPLES: int = 20
+
+
+@pytest.fixture
+def X(rng: np.random.Generator) -> np.ndarray:
+    """Unit vectors on S^2, shape (N_SAMPLES, N_FEATURES)."""
+    X = rng.standard_normal((N_SAMPLES, N_FEATURES))
+    return X / np.linalg.norm(X, axis=1, keepdims=True)  # type: ignore[no-any-return]
+
+
+# ---------------------------------------------------------------------------
+# score_samples
+# ---------------------------------------------------------------------------
+
+
+def test_score_samples_returns_ndarray(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert isinstance(fitted_model.score_samples(X), np.ndarray)
+
+
+def test_score_samples_shape(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert fitted_model.score_samples(X).shape == (N_SAMPLES,)
+
+
+def test_score_samples_finite(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert np.all(np.isfinite(fitted_model.score_samples(X)))
+
+
+def test_score_samples_raises_if_unfitted(
+    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        unfitted_model.score_samples(X)
+
+
+# ---------------------------------------------------------------------------
+# score
+# ---------------------------------------------------------------------------
+
+
+def test_score_returns_float(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert isinstance(fitted_model.score(X), float)
+
+
+def test_score_equals_mean_of_score_samples(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert fitted_model.score(X) == pytest.approx(fitted_model.score_samples(X).mean())
+
+
+def test_score_accepts_y_none(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    fitted_model.score(X, y=None)  # must not raise
+
+
+def test_score_raises_if_unfitted(
+    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        unfitted_model.score(X)
+
+
+# ---------------------------------------------------------------------------
+# aic
+# ---------------------------------------------------------------------------
+
+
+def test_aic_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert isinstance(fitted_model.aic(X), float)
+
+
+def test_aic_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    n_params = N_COMPONENTS * (N_FEATURES + 1) - 1
+    expected = -2.0 * fitted_model.score_samples(X).sum() + 2.0 * n_params
+    assert fitted_model.aic(X) == pytest.approx(expected)
+
+
+def test_aic_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert np.isfinite(fitted_model.aic(X))
+
+
+def test_aic_raises_if_unfitted(
+    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        unfitted_model.aic(X)
+
+
+# ---------------------------------------------------------------------------
+# bic
+# ---------------------------------------------------------------------------
+
+
+def test_bic_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert isinstance(fitted_model.bic(X), float)
+
+
+def test_bic_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    n_params = N_COMPONENTS * (N_FEATURES + 1) - 1
+    expected = -2.0 * fitted_model.score_samples(X).sum() + n_params * np.log(N_SAMPLES)
+    assert fitted_model.bic(X) == pytest.approx(expected)
+
+
+def test_bic_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert np.isfinite(fitted_model.bic(X))
+
+
+def test_bic_raises_if_unfitted(
+    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        unfitted_model.bic(X)
+
+
+def test_bic_penalises_more_than_aic(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    # BIC > AIC when log(N) > 2, i.e. N > ~7; holds for any realistic dataset
+    assert fitted_model.bic(X) > fitted_model.aic(X)
