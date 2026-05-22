@@ -1,5 +1,20 @@
 """
 Module for von Mises-Fisher distribution.
+
+Von Mises-Fisher distribution on S^{d-1} with location mu and concentration
+kappa >= 0. Provides sampling, log-kernel, log-pdf, pdf, and log normalizing
+constant.
+
+References
+----------
+Fisher, R. A. (1953).
+Dispersion on a sphere.
+Proceedings of the Royal Society of London. Series A, 217(1130), 295-305.
+https://doi.org/10.1098/rspa.1953.0064
+
+Mardia, K. V., & Jupp, P. E. (2000).
+Directional Statistics.
+John Wiley & Sons.
 """
 
 import numpy as np

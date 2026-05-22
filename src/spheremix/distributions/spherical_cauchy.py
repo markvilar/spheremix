@@ -1,5 +1,16 @@
 """
 Module for Spherical Cauchy distribution.
+
+Spherical Cauchy distribution on S^{d-1} with location mu and concentration
+rho in [0, 1). Provides sampling, log-kernel, log-pdf, pdf, and log normalizing
+constant.
+
+Reference
+---------
+Kato, S., & McCullagh, P. (2020).
+Some properties of a Cauchy family on the sphere derived from the Möbius transformations.
+Bernoulli, 26(4), 3224-3248.
+https://doi.org/10.3150/20-BEJ1222
 """
 
 import numpy as np
