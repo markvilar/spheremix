@@ -12,5 +12,8 @@ from .spherical_cauchy import SphericalCauchyMixture as SphericalCauchyMixture
 from .spherical_cauchy import (
     fit_spherical_cauchy_mixture as fit_spherical_cauchy_mixture,
 )
+from .power_spherical import PowerSphericalMixtureParams as PowerSphericalMixtureParams
+from .power_spherical import PowerSphericalMixture as PowerSphericalMixture
+from .power_spherical import fit_power_spherical_mixture as fit_power_spherical_mixture
 
 __all__ = []
