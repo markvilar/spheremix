@@ -13,6 +13,7 @@ from spheremix.cluster import SphericalKMeans
 from spheremix.mixtures import SphericalCauchyMixture
 from spheremix.mixtures import PowerSphericalMixture
 from spheremix.mixtures import VonMisesFisherMixture
+from spheremix.mixtures import PKBMixture
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +57,25 @@ def test_von_mises_fisher_mixture_satisfies_mixture_model() -> None:
 @pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
 def test_von_mises_fisher_mixture_has_method(method: str) -> None:
     assert hasattr(VonMisesFisherMixture(n_components=2), method)
+def test_pkb_mixture_satisfies_mixture_model() -> None:
+    assert isinstance(PKBMixture(n_components=2), SphericalMixtureModel)
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "fit",
+        "predict",
+        "predict_proba",
+        "fit_predict",
+        "score",
+        "score_samples",
+        "aic",
+        "bic",
+    ],
+)
+def test_pkb_mixture_has_method(method: str) -> None:
+    assert hasattr(PKBMixture(n_components=2), method)
 
 
 # ---------------------------------------------------------------------------
