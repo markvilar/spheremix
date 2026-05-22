@@ -38,6 +38,7 @@ uv run mypy src
 - Prefer incremental changes — deliver the smallest coherent step, then pause for feedback before continuing.
 - If context is missing (intent behind a requirement, constraints, prior decisions), ask before proceeding rather than assuming.
 - When a design decision has clear trade-offs (e.g. API shape, algorithmic choice, abstraction boundary), surface the options and ask the user to decide before implementing.
+- Never reference Claude anywhere: no `Co-Authored-By` trailers in commits, no mentions in PR titles or bodies, and no mentions in source code or documentation.
 
 ## Code style conventions
 
