@@ -19,18 +19,29 @@ class SphericalMixtureBase(Protocol):
     """
     Structural interface for spherical mixture models.
 
-    Any class that implements ``fit``, ``predict``, ``predict_proba``, and
-    ``fit_predict`` with the expected signatures satisfies this protocol,
-    without requiring explicit inheritance.
+    Any class that implements the methods below with the expected signatures
+    satisfies this protocol, without requiring explicit inheritance.
     """
 
-    def fit(self, X: np.ndarray, y: np.ndarray | None = None) -> Self: ...
+    def fit(self, X: np.ndarray, y: np.ndarray | None = None) -> Self:
+        """Fit the model to unit-vector data X."""
+        ...
 
-    def predict(self, X: np.ndarray) -> np.ndarray: ...
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """Assign each sample to its most probable component."""
+        ...
 
-    def predict_proba(self, X: np.ndarray) -> np.ndarray: ...
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Compute per-sample posterior probabilities over components."""
+        ...
 
-    def fit_predict(self, X: np.ndarray, y: np.ndarray | None = None) -> np.ndarray: ...
+    def fit_predict(self, X: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
+        """Fit the model and return hard component assignments."""
+        ...
+
+    def score(self, X: np.ndarray, y: np.ndarray | None = None) -> float:
+        """Return the mean per-sample log-likelihood of X under the fitted model."""
+        ...
 
 
 # ---------------------------------------------------------------------------
