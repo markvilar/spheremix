@@ -1,5 +1,17 @@
 """
 Module for Poisson kernel-based distribution.
+
+Poisson kernel-based distribution (PKBD) on S^{d-1} with location mu and
+concentration rho in [0, 1). Provides sampling, log-kernel, log-pdf, pdf, and
+log normalizing constant.
+
+Reference
+---------
+Golzy, M., & Markatou, M. (2020).
+Poisson kernel-based clustering on the sphere: Convergence properties, identifiability,
+and a method of sampling.
+Journal of Computational and Graphical Statistics, 29(4), 758-770.
+https://doi.org/10.1080/10618600.2020.1740713
 """
 
 import numpy as np
