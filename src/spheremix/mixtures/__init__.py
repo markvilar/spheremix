@@ -12,5 +12,10 @@ from .spherical_cauchy import SphericalCauchyMixture as SphericalCauchyMixture
 from .spherical_cauchy import (
     fit_spherical_cauchy_mixture as fit_spherical_cauchy_mixture,
 )
+from .von_mises_fisher import VonMisesFisherMixtureParams as VonMisesFisherMixtureParams
+from .von_mises_fisher import VonMisesFisherMixture as VonMisesFisherMixture
+from .von_mises_fisher import (
+    fit_von_mises_fisher_mixture as fit_von_mises_fisher_mixture,
+)
 
 __all__ = []
