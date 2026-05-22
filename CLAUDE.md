@@ -27,6 +27,122 @@ uv run ruff check .
 uv run ruff format .
 ```
 
+**Type check:**
+```bash
+uv run mypy src
+```
+
+## Collaboration rules
+
+- Never implement a feature without first confirming with the user that you should proceed.
+- Prefer incremental changes — deliver the smallest coherent step, then pause for feedback before continuing.
+- If context is missing (intent behind a requirement, constraints, prior decisions), ask before proceeding rather than assuming.
+- When a design decision has clear trade-offs (e.g. API shape, algorithmic choice, abstraction boundary), surface the options and ask the user to decide before implementing.
+
+## Code style conventions
+
+### Tooling
+
+| Tool | Command |
+|---|---|
+| Linting | `uv run ruff check .` |
+| Formatting | `uv run ruff format .` |
+| Type checking | `uv run mypy .` |
+| Tests | `uv run pytest` |
+
+All code must pass all four tools with no errors.
+
+### Type hints
+
+Always add type hints to variables, function arguments, and return types. Use the Python 3.12 `type` statement for type aliases:
+
+```python
+type WeightVector = np.ndarray
+type ComponentIndex = int
+```
+
+### Strings
+
+Use double quotes for all strings. Single quotes are acceptable inside f-strings to avoid escaping:
+
+```python
+label: str = "spherical-cauchy"
+message: str = f"component {component['name']} converged"
+```
+
+### Variable names
+
+Prefer descriptive names over single- or two-character abbreviations — descriptive names make the code more readable. Exception: short or single-character names are acceptable for class member fields where the meaning is established by context (e.g. `mu`, `rho` on a distribution dataclass).
+
+### Import ordering
+
+Group imports in the following order, and separate the `import ...` groups from the `from ... import ...` groups with a blank line:
+
+```python
+import math
+import os
+
+import numpy as np
+import torch
+
+import spheremix
+
+from typing import Sequence
+
+from numpy.typing import NDArray
+
+from spheremix.distributions import PKBDistribution, SphericalCauchyDistribution
+from spheremix.mixtures import SphericalCauchyMixture
+```
+
+### Multi-item imports
+
+When importing multiple names from the same package or module, use parentheses with one name per line:
+
+```python
+from spheremix.distributions import (
+    PKBDistribution,
+    SphericalCauchyDistribution,
+)
+```
+
+### Internal package imports
+
+When importing from internal packages, import classes and functions from the package, not from the module within it. This decouples callers from the internal file layout:
+
+```python
+# Preferred
+from spheremix.distributions import SphericalCauchyDistribution
+
+# Avoid
+from spheremix.distributions.spherical_cauchy import SphericalCauchyDistribution
+```
+
+### Docstrings
+
+Under `Arguments` and `Returns` section headers, add a line of hyphens and do not indent the descriptions:
+
+```python
+def fit(
+    data: NDArray[np.float64],
+    max_iter: int = 100,
+    tol: float = 1e-6,
+) -> SphericalCauchyDistribution:
+    """
+    Fit a spherical Cauchy distribution to data via EM.
+
+    Arguments
+    ---------
+    data: Unit vectors of shape (n, d).
+    max_iter: Maximum number of EM iterations.
+    tol: Convergence tolerance on the log-likelihood.
+
+    Returns
+    -------
+    Fitted SphericalCauchyDistribution.
+    """
+```
+
 ## Architecture
 
 **Spheremix** is a Python library for spherical probability distributions and mixture models on unit hyperspheres.
@@ -43,15 +159,17 @@ uv run ruff format .
 
 ## Skills
 
-When developing this library, always invoke these skills from the `python-library-complete` plugin:
-- `/python-library-complete:api-design`
-- `/python-library-complete:code-quality`
-- `/python-library-complete:cli-development`
-- `/python-library-complete:performance`
+When developing Python code in this project, use these skills at the appropriate moments:
+
+- `/python-library-complete:api-design` — before finalising any new public interface (functions, types, exceptions). Use it to evaluate naming, composability, and error handling before the design is locked in.
+- `/python-library-complete:code-quality` — after implementing a module or non-trivial function. Use it to check for Pythonic idioms, type hint completeness, and mypy strictness issues that ruff won't catch.
+- `/python-library-complete:testing-strategy` — when adding a new module or a protocol feature with structured input space. Use it to design fixtures, parametrization, and property-based tests before writing test code.
 
 Also invoke the following skills when relevant to the work at hand:
+
+- `/python-library-complete:cli-development` — when adding or modifying CLI scripts
+- `/python-library-complete:performance` — when optimising hot paths or benchmarking
 - `/python-library-complete:documentation` — when writing docstrings or user guides
-- `/python-library-complete:testing-strategy` — when writing tests
 - `/python-library-complete:packaging` — when updating packaging or publishing
 - `/python-library-complete:release-management` — when cutting a release
 - `/python-library-complete:security-audit` — when reviewing security
@@ -63,3 +181,9 @@ Also invoke the following skills when relevant to the work at hand:
 - `SphericalKMeans` follows the scikit-learn estimator API (`fit`, `predict`, `fit_predict`).
 - `loguru` is used for logging throughout.
 - `scripts/` contains standalone CLI scripts (mixture fitting, vector reduction) using `click`.
+
+## Agent skills
+
+### Domain docs
+
+Single-context repo — one `CONTEXT.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.
