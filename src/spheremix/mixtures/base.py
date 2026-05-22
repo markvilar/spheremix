@@ -1,47 +1,10 @@
 """
-Base protocol and serialization mixin for spherical mixture models.
+Serialization mixin for spherical mixture models.
 """
 
 from abc import ABC, abstractmethod
 from importlib.metadata import version as _get_version
-from typing import ClassVar, Protocol, Self, runtime_checkable
-
-import numpy as np
-
-
-# ---------------------------------------------------------------------------
-# Model interface
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class SphericalMixtureBase(Protocol):
-    """
-    Structural interface for spherical mixture models.
-
-    Any class that implements the methods below with the expected signatures
-    satisfies this protocol, without requiring explicit inheritance.
-    """
-
-    def fit(self, X: np.ndarray, y: np.ndarray | None = None) -> Self:
-        """Fit the model to unit-vector data X."""
-        ...
-
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """Assign each sample to its most probable component."""
-        ...
-
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        """Compute per-sample posterior probabilities over components."""
-        ...
-
-    def fit_predict(self, X: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
-        """Fit the model and return hard component assignments."""
-        ...
-
-    def score(self, X: np.ndarray, y: np.ndarray | None = None) -> float:
-        """Return the mean per-sample log-likelihood of X under the fitted model."""
-        ...
+from typing import ClassVar, Self
 
 
 # ---------------------------------------------------------------------------

@@ -38,7 +38,7 @@ class SphericalKMeans:
     inertia_: float | None = field(default=None, init=False)
     n_iter_: int | None = field(default=None, init=False)
 
-    def fit(self, X: np.ndarray, y: None = None) -> Self:
+    def fit(self, X: np.ndarray, y: np.ndarray | None = None) -> Self:
         """
         Fits the model to the data an
 
@@ -88,7 +88,7 @@ class SphericalKMeans:
         assert self.cluster_means is not None
         return _spherical_kmeans_predict(X=X, centers=self.cluster_means)
 
-    def fit_predict(self, X: np.ndarray) -> np.ndarray:
+    def fit_predict(self, X: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
         """
         Fits the model to the samples, and predicts the sample cluster labels.
 
