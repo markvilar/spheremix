@@ -286,7 +286,7 @@ def plot_aic_bic(
 )
 @click.option(
     "--max-iter",
-    default=100,
+    default=20,
     show_default=True,
     type=click.IntRange(min=1),
     help="Maximum number of EM iterations.",
