@@ -11,6 +11,8 @@ import pytest
 from spheremix import SphericalClusterer, SphericalMixtureModel
 from spheremix.cluster import SphericalKMeans
 from spheremix.mixtures import SphericalCauchyMixture
+from spheremix.mixtures import PowerSphericalMixture
+from spheremix.mixtures import VonMisesFisherMixture
 from spheremix.mixtures import PKBMixture
 
 
@@ -18,28 +20,43 @@ from spheremix.mixtures import PKBMixture
 # SphericalMixtureModel
 # ---------------------------------------------------------------------------
 
+_MIXTURE_MODEL_METHODS = [
+    "fit",
+    "predict",
+    "predict_proba",
+    "fit_predict",
+    "score",
+    "score_samples",
+    "aic",
+    "bic",
+]
+
 
 def test_spherical_cauchy_mixture_satisfies_mixture_model() -> None:
     assert isinstance(SphericalCauchyMixture(n_components=2), SphericalMixtureModel)
 
 
-@pytest.mark.parametrize(
-    "method",
-    [
-        "fit",
-        "predict",
-        "predict_proba",
-        "fit_predict",
-        "score",
-        "score_samples",
-        "aic",
-        "bic",
-    ],
-)
+@pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
 def test_spherical_cauchy_mixture_has_method(method: str) -> None:
     assert hasattr(SphericalCauchyMixture(n_components=2), method)
 
 
+def test_power_spherical_mixture_satisfies_mixture_model() -> None:
+    assert isinstance(PowerSphericalMixture(n_components=2), SphericalMixtureModel)
+
+
+@pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
+def test_power_spherical_mixture_has_method(method: str) -> None:
+    assert hasattr(PowerSphericalMixture(n_components=2), method)
+
+
+def test_von_mises_fisher_mixture_satisfies_mixture_model() -> None:
+    assert isinstance(VonMisesFisherMixture(n_components=2), SphericalMixtureModel)
+
+
+@pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
+def test_von_mises_fisher_mixture_has_method(method: str) -> None:
+    assert hasattr(VonMisesFisherMixture(n_components=2), method)
 def test_pkb_mixture_satisfies_mixture_model() -> None:
     assert isinstance(PKBMixture(n_components=2), SphericalMixtureModel)
 
