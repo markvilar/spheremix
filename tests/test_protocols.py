@@ -11,6 +11,7 @@ import pytest
 from spheremix import SphericalClusterer, SphericalMixtureModel
 from spheremix.cluster import SphericalKMeans
 from spheremix.mixtures import SphericalCauchyMixture
+from spheremix.mixtures import PKBMixture
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +38,27 @@ def test_spherical_cauchy_mixture_satisfies_mixture_model() -> None:
 )
 def test_spherical_cauchy_mixture_has_method(method: str) -> None:
     assert hasattr(SphericalCauchyMixture(n_components=2), method)
+
+
+def test_pkb_mixture_satisfies_mixture_model() -> None:
+    assert isinstance(PKBMixture(n_components=2), SphericalMixtureModel)
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "fit",
+        "predict",
+        "predict_proba",
+        "fit_predict",
+        "score",
+        "score_samples",
+        "aic",
+        "bic",
+    ],
+)
+def test_pkb_mixture_has_method(method: str) -> None:
+    assert hasattr(PKBMixture(n_components=2), method)
 
 
 # ---------------------------------------------------------------------------
