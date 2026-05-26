@@ -1,8 +1,8 @@
-# Python Project Template - UV
+# Spheremix - Spherical Probability Distributions and Mixture Models
 
-![ci](https://github.com/markvilar/python_uv_template/actions/workflows/ubuntu.yml/badge.svg)
+Spheremix is a library for spherical probability distributions and mixture models.
 
-A template repository for python packages with integration of [the uv package manager](https://docs.astral.sh/uv/).
+![ci](https://github.com/markvilar/spheremix/actions/workflows/ubuntu.yml/badge.svg)
 
 
 ### Getting started
