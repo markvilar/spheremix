@@ -38,7 +38,11 @@ uv run mypy src
 - Prefer incremental changes — deliver the smallest coherent step, then pause for feedback before continuing.
 - If context is missing (intent behind a requirement, constraints, prior decisions), ask before proceeding rather than assuming.
 - When a design decision has clear trade-offs (e.g. API shape, algorithmic choice, abstraction boundary), surface the options and ask the user to decide before implementing.
-- Never reference Claude anywhere: no `Co-Authored-By` trailers in commits, no mentions in PR titles or bodies, and no mentions in source code or documentation.
+
+## Git conventions
+
+- Never reference Claude in git commit messages, pull requests, or issues — no `Co-Authored-By` trailers, no body text attributions, and no mentions in source code or documentation.
+- Use backtick (`) for inline code and triple backtick (```) for code blocks in GitHub issues and pull requests. Do not use escaped backticks (`\``).
 
 ## Code style conventions
 
@@ -53,9 +57,9 @@ uv run mypy src
 
 All code must pass all four tools with no errors.
 
-### Type hints
+### Types
 
-Always add type hints to variables, function arguments, and return types. Use the Python 3.12 `type` statement for type aliases:
+Always add type hints to return types, arguments, fields, and variables. Use the Python 3.12 `type` statement for type aliases:
 
 ```python
 type WeightVector = np.ndarray
@@ -73,9 +77,11 @@ message: str = f"component {component['name']} converged"
 
 ### Variable names
 
-Prefer descriptive names over single- or two-character abbreviations — descriptive names make the code more readable. Exception: short or single-character names are acceptable for class member fields where the meaning is established by context (e.g. `mu`, `rho` on a distribution dataclass).
+Prefer full words over abbreviations — use `message` not `msg`, `result` not `res`, `error` not `err`, `config` not `cfg`. This applies to names of any length; three-character abbreviations are just as discouraged as one- or two-character ones. Exception: short or single-character names are acceptable for class member fields where the meaning is established by context (e.g. `mu`, `rho` on a distribution dataclass).
 
-### Import ordering
+### Imports
+
+#### Ordering
 
 Group imports in the following order, and separate the `import ...` groups from the `from ... import ...` groups with a blank line:
 
@@ -96,7 +102,7 @@ from spheremix.distributions import PKBDistribution, SphericalCauchyDistribution
 from spheremix.mixtures import SphericalCauchyMixture
 ```
 
-### Multi-item imports
+#### Multi-item imports
 
 When importing multiple names from the same package or module, use parentheses with one name per line:
 
@@ -107,9 +113,9 @@ from spheremix.distributions import (
 )
 ```
 
-### Internal package imports
+#### Internal package imports
 
-When importing from internal packages, import classes and functions from the package, not from the module within it. This decouples callers from the internal file layout:
+Import classes and functions from the package, not from the module within it. This decouples callers from the internal file layout:
 
 ```python
 # Preferred
@@ -121,7 +127,9 @@ from spheremix.distributions.spherical_cauchy import SphericalCauchyDistribution
 
 ### Docstrings
 
-Under `Arguments` and `Returns` section headers, add a line of hyphens and do not indent the descriptions:
+Add a line of hyphens under `Arguments`, `Returns`, and `Attributes` section headers.
+
+Function example:
 
 ```python
 def fit(
@@ -142,6 +150,26 @@ def fit(
     -------
     Fitted SphericalCauchyDistribution.
     """
+```
+
+Class example:
+
+```python
+@dataclass
+class SphericalCauchyMixtureParams:
+    """
+    Fitted parameters for a Spherical Cauchy mixture model.
+
+    Attributes
+    ----------
+    weights: Mixing weights, shape (K,), sums to 1.
+    means: Component means (unit vectors), shape (K, D).
+    concentrations: Concentration parameters rho, shape (K,), values in [0, 1).
+    """
+
+    weights: np.ndarray
+    means: np.ndarray
+    concentrations: np.ndarray
 ```
 
 ## Architecture
