@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from importlib.metadata import version as _get_version
 from typing import ClassVar, Self
 
+import numpy as np
+
 
 # ---------------------------------------------------------------------------
 # Serialization mixin
@@ -87,3 +89,13 @@ class SerializableMixin(ABC):
     def _params_from_dict(cls, data: dict) -> Self:
         """Reconstruct an instance from the subclass-specific parameters in ``data``."""
         ...
+
+
+def _classification_entropy(responsibilities: np.ndarray) -> float:
+    """
+    Compute EN(R) = -∑ₙ ∑ₖ R[n,k] · log R[n,k].
+
+    Clips near-zero values to avoid log(0).
+    """
+    log_resp: np.ndarray = np.log(np.clip(responsibilities, 1e-300, 1.0))
+    return float(-(responsibilities * log_resp).sum())
