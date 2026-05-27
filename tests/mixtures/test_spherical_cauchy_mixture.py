@@ -263,6 +263,23 @@ def X(rng: np.random.Generator) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# is_fitted
+# ---------------------------------------------------------------------------
+
+
+def test_is_fitted_returns_false_before_fit(
+    unfitted_model: SphericalCauchyMixture,
+) -> None:
+    assert unfitted_model.is_fitted() is False
+
+
+def test_is_fitted_returns_true_after_fit(
+    fitted_model: SphericalCauchyMixture,
+) -> None:
+    assert fitted_model.is_fitted() is True
+
+
+# ---------------------------------------------------------------------------
 # score_samples
 # ---------------------------------------------------------------------------
 
@@ -379,3 +396,101 @@ def test_bic_penalises_more_than_aic(
 ) -> None:
     # BIC > AIC when log(N) > 2, i.e. N > ~7; holds for any realistic dataset
     assert fitted_model.bic(X) > fitted_model.aic(X)
+
+
+# ---------------------------------------------------------------------------
+# icl
+# ---------------------------------------------------------------------------
+
+
+def test_icl_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert isinstance(fitted_model.icl(X), float)
+
+
+def test_icl_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    responsibilities = fitted_model.predict_proba(X)
+    entropy = -(responsibilities * np.log(np.clip(responsibilities, 1e-300, 1.0))).sum()
+    expected = fitted_model.bic(X) + 2.0 * entropy
+    assert fitted_model.icl(X) == pytest.approx(expected)
+
+
+def test_icl_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert np.isfinite(fitted_model.icl(X))
+
+
+def test_icl_raises_if_unfitted(
+    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        unfitted_model.icl(X)
+
+
+def test_icl_penalises_at_least_as_much_as_bic(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert fitted_model.icl(X) >= fitted_model.bic(X)
+
+
+# ---------------------------------------------------------------------------
+# bici
+# ---------------------------------------------------------------------------
+
+
+def test_bici_returns_float(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert isinstance(fitted_model.bici(X), float)
+
+
+def test_bici_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    responsibilities = fitted_model.predict_proba(X)
+    assignments = responsibilities.argmax(axis=1)
+    log_map_prob = np.log(responsibilities[np.arange(N_SAMPLES), assignments])
+    expected = fitted_model.bic(X) - 2.0 * log_map_prob.sum()
+    assert fitted_model.bici(X) == pytest.approx(expected)
+
+
+def test_bici_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert np.isfinite(fitted_model.bici(X))
+
+
+def test_bici_raises_if_unfitted(
+    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        unfitted_model.bici(X)
+
+
+def test_bici_penalises_at_least_as_much_as_bic(
+    fitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    assert fitted_model.bici(X) >= fitted_model.bic(X)
+
+
+# ---------------------------------------------------------------------------
+# dic
+# ---------------------------------------------------------------------------
+
+
+def test_dic_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert isinstance(fitted_model.dic(X), float)
+
+
+def test_dic_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    n_params = N_COMPONENTS * (N_FEATURES + 1) - 1
+    responsibilities = fitted_model.predict_proba(X)
+    entropy = -(responsibilities * np.log(np.clip(responsibilities, 1e-300, 1.0))).sum()
+    log_likelihood = fitted_model.score_samples(X).sum()
+    expected = -2.0 * log_likelihood + 2.0 * entropy + 2.0 * n_params
+    assert fitted_model.dic(X) == pytest.approx(expected)
+
+
+def test_dic_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
+    assert np.isfinite(fitted_model.dic(X))
+
+
+def test_dic_raises_if_unfitted(
+    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        unfitted_model.dic(X)

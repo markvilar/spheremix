@@ -42,6 +42,10 @@ class SphericalMixtureModel(Protocol):
         """Fit the model to unit-vector data X."""
         ...
 
+    def is_fitted(self) -> bool:
+        """Return True if the model has been fitted, False otherwise."""
+        ...
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Assign each sample to its most probable component."""
         ...
@@ -68,4 +72,16 @@ class SphericalMixtureModel(Protocol):
 
     def bic(self, X: np.ndarray) -> float:
         """Return the Bayesian Information Criterion for the fitted model on X."""
+        ...
+
+    def icl(self, X: np.ndarray) -> float:
+        """Return the Integrated Completed Likelihood for the fitted model on X."""
+        ...
+
+    def bici(self, X: np.ndarray) -> float:
+        """Return the complete-data BIC for the fitted model on X."""
+        ...
+
+    def dic(self, X: np.ndarray) -> float:
+        """Return the Deviance Information Criterion for the fitted model on X."""
         ...

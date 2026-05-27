@@ -11,7 +11,7 @@ from typing import ClassVar, Literal, Self
 from loguru import logger
 from spheremix.distributions import von_mises_fisher_logkernel
 from spheremix.distributions import von_mises_fisher_logpdf
-from .base import SerializableMixin
+from .base import SerializableMixin, _classification_entropy
 from .initializer import MeanInitStrategy, create_mean_initializer
 
 
@@ -121,6 +121,10 @@ class VonMisesFisherMixture(SerializableMixin):
             raise ValueError("Model is not fitted yet. Call fit() before get_params().")
         return self.params_
 
+    def is_fitted(self) -> bool:
+        """Return True if the model has been fitted, False otherwise."""
+        return self.params_ is not None
+
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """
         Compute posterior probabilities p(z=k | x_n, Θ) for each sample.
@@ -192,6 +196,8 @@ class VonMisesFisherMixture(SerializableMixin):
         -------
         float
         """
+        if not self.is_fitted():
+            raise ValueError("Model is not fitted yet. Call fit() before aic().")
         n_params = self.n_components * (X.shape[1] + 1) - 1
         return float(-2.0 * self.score_samples(X).sum() + 2.0 * n_params)
 
@@ -211,8 +217,82 @@ class VonMisesFisherMixture(SerializableMixin):
         -------
         float
         """
+        if not self.is_fitted():
+            raise ValueError("Model is not fitted yet. Call fit() before bic().")
         n_params = self.n_components * (X.shape[1] + 1) - 1
         return float(-2.0 * self.score_samples(X).sum() + n_params * np.log(X.shape[0]))
+
+    def icl(self, X: np.ndarray) -> float:
+        """
+        Integrated Completed Likelihood for the fitted model on X.
+
+        Lower is better. Extends BIC with a classification entropy term that
+        increases when component assignments are uncertain.
+        Requires the model to be fitted.
+
+        Parameters
+        ----------
+        X:
+            Unit-vector data, shape (N, D).
+
+        Returns
+        -------
+        float
+        """
+        if not self.is_fitted():
+            raise ValueError("Model is not fitted yet. Call fit() before icl().")
+        entropy: float = _classification_entropy(self.predict_proba(X))
+        return float(self.bic(X) + 2.0 * entropy)
+
+    def bici(self, X: np.ndarray) -> float:
+        """
+        Complete-data BIC for the fitted model on X.
+
+        Lower is better. Extends BIC using the complete-data log-likelihood
+        under hard MAP component assignments.
+        Requires the model to be fitted.
+
+        Parameters
+        ----------
+        X:
+            Unit-vector data, shape (N, D).
+
+        Returns
+        -------
+        float
+        """
+        if not self.is_fitted():
+            raise ValueError("Model is not fitted yet. Call fit() before bici().")
+        responsibilities: np.ndarray = self.predict_proba(X)
+        assignments: np.ndarray = responsibilities.argmax(axis=1)
+        log_map_prob: np.ndarray = np.log(
+            responsibilities[np.arange(X.shape[0]), assignments]
+        )
+        return float(self.bic(X) - 2.0 * log_map_prob.sum())
+
+    def dic(self, X: np.ndarray) -> float:
+        """
+        Deviance Information Criterion (complete-data) for the fitted model on X.
+
+        Lower is better. Uses the EM Q-function (expected complete-data
+        log-likelihood) with a flat 2 × n_parameters complexity penalty.
+        Requires the model to be fitted.
+
+        Parameters
+        ----------
+        X:
+            Unit-vector data, shape (N, D).
+
+        Returns
+        -------
+        float
+        """
+        if not self.is_fitted():
+            raise ValueError("Model is not fitted yet. Call fit() before dic().")
+        n_params: int = self.n_components * (X.shape[1] + 1) - 1
+        entropy: float = _classification_entropy(self.predict_proba(X))
+        log_likelihood: float = float(self.score_samples(X).sum())
+        return float(-2.0 * log_likelihood + 2.0 * entropy + 2.0 * n_params)
 
     def _params_to_dict(self) -> dict:
         return {
