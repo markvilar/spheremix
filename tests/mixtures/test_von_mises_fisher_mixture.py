@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from numpy.testing import assert_allclose
+from spheremix.distributions import VmfLogNormalizerMethod
 from spheremix.mixtures.von_mises_fisher import (
     VonMisesFisherMixture,
     VonMisesFisherMixtureParams,
@@ -379,3 +380,44 @@ def test_bic_penalises_more_than_aic(
     fitted_model: VonMisesFisherMixture, X: np.ndarray
 ) -> None:
     assert fitted_model.bic(X) > fitted_model.aic(X)
+
+
+# ---------------------------------------------------------------------------
+# log_normalizer_method — serialization and scoring
+# ---------------------------------------------------------------------------
+
+
+def test_default_log_normalizer_method_is_amos_upper() -> None:
+    model = VonMisesFisherMixture(n_components=2)
+    assert model.log_normalizer_method == VmfLogNormalizerMethod.AMOS_UPPER
+
+
+@pytest.mark.parametrize("method", list(VmfLogNormalizerMethod))
+def test_to_dict_includes_log_normalizer_method(method: VmfLogNormalizerMethod) -> None:
+    model = VonMisesFisherMixture(n_components=2, log_normalizer_method=method)
+    assert model.to_dict()["log_normalizer_method"] == method.value
+
+
+@pytest.mark.parametrize("method", list(VmfLogNormalizerMethod))
+def test_from_dict_restores_log_normalizer_method(
+    method: VmfLogNormalizerMethod,
+) -> None:
+    model = VonMisesFisherMixture(n_components=2, log_normalizer_method=method)
+    restored = VonMisesFisherMixture.from_dict(model.to_dict())
+    assert restored.log_normalizer_method == method
+
+
+def test_log_normalizer_method_roundtrips_via_json() -> None:
+    model = VonMisesFisherMixture(
+        n_components=2, log_normalizer_method=VmfLogNormalizerMethod.AMOS_LOWER
+    )
+    restored = VonMisesFisherMixture.from_dict(json.loads(json.dumps(model.to_dict())))
+    assert restored.log_normalizer_method == VmfLogNormalizerMethod.AMOS_LOWER
+
+
+@pytest.mark.parametrize("method", list(VmfLogNormalizerMethod))
+def test_score_samples_finite_for_all_methods(
+    fitted_model: VonMisesFisherMixture, X: np.ndarray, method: VmfLogNormalizerMethod
+) -> None:
+    fitted_model.log_normalizer_method = method
+    assert np.all(np.isfinite(fitted_model.score_samples(X)))

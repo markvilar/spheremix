@@ -19,8 +19,11 @@ from .spherical_cauchy import (
 )
 
 from .vonmises import (
+    VmfLogNormalizerMethod as VmfLogNormalizerMethod,
     VonMisesFisherDistribution as VonMisesFisherDistribution,
+    make_log_normalizer as make_log_normalizer,
     sample_von_mises_fisher as sample_von_mises_fisher,
+    von_mises_fisher_log_normalizing_constant as von_mises_fisher_log_normalizing_constant,
     von_mises_fisher_logkernel as von_mises_fisher_logkernel,
     von_mises_fisher_logpdf as von_mises_fisher_logpdf,
     von_mises_fisher_pdf as von_mises_fisher_pdf,
