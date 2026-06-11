@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from scipy.special import ive
 from typing import ClassVar, Literal, Self
 from loguru import logger
+from spheremix.distributions import VmfLogNormalizerMethod
 from spheremix.distributions import von_mises_fisher_logkernel
 from spheremix.distributions import von_mises_fisher_logpdf
 from .base import SerializableMixin, _classification_entropy
@@ -75,6 +76,10 @@ class VonMisesFisherMixture(SerializableMixin):
         Relative log-likelihood convergence tolerance.
     verbose:
         Log EM iteration progress.
+    log_normalizer_method:
+        Method for computing the log normalizing constant in scoring functions.
+        Does not affect EM convergence (the E-step uses unnormalized log-kernels).
+        Defaults to AMOS_UPPER for numerical stability.
     params_:
         Fitted mixture components; ``None`` until ``fit()`` is called.
     log_likelihood_:
@@ -91,6 +96,7 @@ class VonMisesFisherMixture(SerializableMixin):
     tol: float = 1e-4
     rtol: float = 1e-6
     verbose: bool = False
+    log_normalizer_method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER
 
     params_: VonMisesFisherMixtureParams | None = field(default=None, init=False)
     log_likelihood_: float = field(default=-np.inf, init=False)
@@ -156,7 +162,7 @@ class VonMisesFisherMixture(SerializableMixin):
         log_joint = np.empty((N, K))
         for k in range(K):
             log_joint[:, k] = np.log(p.weights[k]) + von_mises_fisher_logpdf(
-                X, p.means[k], p.concentrations[k]
+                X, p.means[k], p.concentrations[k], method=self.log_normalizer_method
             )
         return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
 
@@ -302,6 +308,7 @@ class VonMisesFisherMixture(SerializableMixin):
             "tol": self.tol,
             "rtol": self.rtol,
             "verbose": self.verbose,
+            "log_normalizer_method": self.log_normalizer_method.value,
             "log_likelihood_": self.log_likelihood_,
             "n_iter_": self.n_iter_,
             "params_": self.params_.to_dict() if self.params_ is not None else None,
@@ -316,6 +323,11 @@ class VonMisesFisherMixture(SerializableMixin):
             tol=data["tol"],
             rtol=data["rtol"],
             verbose=data["verbose"],
+            log_normalizer_method=VmfLogNormalizerMethod(
+                data.get(
+                    "log_normalizer_method", VmfLogNormalizerMethod.AMOS_UPPER.value
+                )
+            ),
         )
         model.log_likelihood_ = data["log_likelihood_"]
         model.n_iter_ = data["n_iter_"]
