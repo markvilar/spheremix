@@ -74,6 +74,9 @@ class PKBMixture(SerializableMixin):
         Relative log-likelihood convergence tolerance.
     verbose:
         Log EM iteration progress.
+    seed:
+        Seed for the mean initialiser; the same seed gives the same fit.
+        ``None`` draws a fresh unseeded generator on each fit.
     params_:
         Fitted mixture components; ``None`` until ``fit()`` is called.
     log_likelihood_:
@@ -90,6 +93,7 @@ class PKBMixture(SerializableMixin):
     tol: float = 1e-4
     rtol: float = 1e-6
     verbose: bool = False
+    seed: int | None = None
 
     params_: PKBMixtureParams | None = field(default=None, init=False)
     log_likelihood_: float = field(default=-np.inf, init=False)
@@ -108,6 +112,7 @@ class PKBMixture(SerializableMixin):
             tol=self.tol,
             rtol=self.rtol,
             verbose=self.verbose,
+            seed=self.seed,
         )
         return self
 
@@ -301,6 +306,7 @@ class PKBMixture(SerializableMixin):
             "tol": self.tol,
             "rtol": self.rtol,
             "verbose": self.verbose,
+            "seed": self.seed,
             "log_likelihood_": self.log_likelihood_,
             "n_iter_": self.n_iter_,
             "params_": self.params_.to_dict() if self.params_ is not None else None,
@@ -315,6 +321,7 @@ class PKBMixture(SerializableMixin):
             tol=data["tol"],
             rtol=data["rtol"],
             verbose=data["verbose"],
+            seed=data.get("seed"),
         )
         model.log_likelihood_ = data["log_likelihood_"]
         model.n_iter_ = data["n_iter_"]
@@ -343,9 +350,13 @@ def fit_pkbd_mixture(
     tol: float = 1e-4,
     rtol: float = 1e-6,
     verbose: bool = False,
+    seed: int | None = None,
 ) -> tuple[PKBMixtureParams, float, int]:
     """
     Fit a PKBD mixture model via EM.
+
+    ``seed`` seeds the named initialisers; it is ignored when ``init`` is a
+    ``MeanInitStrategy``, which owns its own randomness.
 
     Returns the fitted components, final log-likelihood, and iteration count.
     """
@@ -356,7 +367,7 @@ def fit_pkbd_mixture(
         raise ValueError("number of features must be 2 or higher")
 
     mean_init: MeanInitStrategy = (
-        create_mean_initializer(init) if isinstance(init, str) else init
+        create_mean_initializer(init, seed=seed) if isinstance(init, str) else init
     )
 
     weights: np.ndarray = _init_component_weights(K)

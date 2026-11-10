@@ -89,7 +89,10 @@ def _kmeans_mean_initializer(
     return initialize
 
 
-def create_mean_initializer(method: Literal["random", "kmeans"]) -> MeanInitStrategy:
+def create_mean_initializer(
+    method: Literal["random", "kmeans"],
+    seed: int | None = None,
+) -> MeanInitStrategy:
     """
     Return a mean initializer by name.
 
@@ -98,16 +101,20 @@ def create_mean_initializer(method: Literal["random", "kmeans"]) -> MeanInitStra
     method : {"random", "kmeans"}
         ``"random"``  — unit vectors drawn uniformly on the sphere (fast, order-independent).
         ``"kmeans"``  — Spherical K-means warm start (slower, better starting point).
+    seed : int, optional
+        Seed for the initializer's random number generator. ``None`` uses a
+        fresh unseeded generator.
 
     Returns
     -------
     MeanInitStrategy
     """
+    rng: np.random.Generator = np.random.default_rng(seed)
     match method:
         case "random":
-            return _random_mean_initializer()
+            return _random_mean_initializer(rng=rng)
         case "kmeans":
-            return _kmeans_mean_initializer()
+            return _kmeans_mean_initializer(rng=rng)
         case _:
             raise ValueError(
                 f"Unknown init method '{method}'. Expected 'random' or 'kmeans'."

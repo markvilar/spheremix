@@ -52,11 +52,7 @@ def test_random_mean_initializer_is_reproducible() -> None:
     data: NDArray[np.float64] = sample_uniform_sphere(
         10, 4, rng=np.random.default_rng(0)
     )
-    first: NDArray[np.float64] = _random_mean_initializer(rng=np.random.default_rng(7))(
-        data, 3
-    )
-    second: NDArray[np.float64] = _random_mean_initializer(
-        rng=np.random.default_rng(7)
-    )(data, 3)
+    first: NDArray[np.float64] = create_mean_initializer("random", seed=7)(data, 3)
+    second: NDArray[np.float64] = create_mean_initializer("random", seed=7)(data, 3)
 
     assert_array_equal(first, second)
