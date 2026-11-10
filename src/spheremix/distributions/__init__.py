@@ -37,4 +37,8 @@ from .power_spherical import (
     power_spherical_pdf as power_spherical_pdf,
 )
 
+from .utilities import (
+    sample_uniform_sphere as sample_uniform_sphere,
+)
+
 __all__ = []

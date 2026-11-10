@@ -11,7 +11,20 @@ def sample_uniform_sphere(
     rng: np.random.Generator | None = None,
 ) -> np.ndarray:
     """
-    Sample from a uniform distribution on S^{d-1}.
+    Sample from the uniform distribution on the unit sphere S^{d-1}.
+
+    Normalises standard normal draws, which gives directions that are uniform
+    on the sphere for any dimension.
+
+    Arguments
+    ---------
+    n_samples: Number of samples to draw.
+    n_features: Ambient dimension d of the sphere S^{d-1}.
+    rng: Random number generator. A fresh generator is created if not provided.
+
+    Returns
+    -------
+    Unit vectors, shape (n_samples, n_features).
     """
     if rng is None:
         rng = np.random.default_rng()
