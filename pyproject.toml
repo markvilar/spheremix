@@ -1,6 +1,6 @@
 [project]
 name = "spheremix"
-version = "0.3.0"
+version = "0.4.0"
 description = "Spheremix is a library for spherical probability distributions and mixture models."
 readme = "README.md"
 authors = [
