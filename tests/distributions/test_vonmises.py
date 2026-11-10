@@ -243,7 +243,9 @@ class TestLogPDF:
         angles = rng.uniform(0, 2 * np.pi, size=50)
         X = np.column_stack([np.cos(angles), np.sin(angles)])
 
-        our_logpdf = von_mises_fisher_logpdf(X, mu, kappa=kappa)
+        our_logpdf = von_mises_fisher_logpdf(
+            X, mu, kappa=kappa, method=VmfLogNormalizerMethod.EXACT
+        )
 
         # scipy uses the signed angular deviation from the mean
         delta = angles - theta_mu
@@ -262,7 +264,9 @@ class TestLogPDF:
         rng = make_rng()
         mu = random_unit_vector(3, rng)
         X = random_sphere_samples(100, 3, rng)
-        our_logpdf = von_mises_fisher_logpdf(X, mu, kappa=kappa)
+        our_logpdf = von_mises_fisher_logpdf(
+            X, mu, kappa=kappa, method=VmfLogNormalizerMethod.EXACT
+        )
         ref_logpdf = vmf_logpdf_d3_analytical(X, mu, kappa)
         assert_allclose(our_logpdf, ref_logpdf, rtol=1e-7)
 
@@ -278,7 +282,9 @@ class TestLogPDF:
         rng = make_rng()
         mu = random_unit_vector(d, rng)
         X_unif = random_sphere_samples(N_SAMPLES, d, rng)
-        pdf_vals = von_mises_fisher_pdf(X_unif, mu, kappa=kappa)
+        pdf_vals = von_mises_fisher_pdf(
+            X_unif, mu, kappa=kappa, method=VmfLogNormalizerMethod.EXACT
+        )
         mc_integral = pdf_vals.mean() * sphere_surface_area(d)
         # std of the estimator ≈ std(pdf) / sqrt(N) * surface_area
         se = pdf_vals.std() / np.sqrt(N_SAMPLES) * sphere_surface_area(d)
@@ -532,12 +538,29 @@ class TestVmfLogNormalizerMethod:
         assert_allclose(upper, exact, atol=1e-10)
         assert_allclose(lower, exact, atol=1e-10)
 
-    def test_default_method_is_exact(self) -> None:
+    def test_default_method_is_amos_upper(self) -> None:
         result_default = von_mises_fisher_log_normalizing_constant(3, 2.0)
-        result_exact = von_mises_fisher_log_normalizing_constant(
-            3, 2.0, method=VmfLogNormalizerMethod.EXACT
+        result_upper = von_mises_fisher_log_normalizing_constant(
+            3, 2.0, method=VmfLogNormalizerMethod.AMOS_UPPER
         )
-        assert result_default == result_exact
+        assert result_default == result_upper
+
+    def test_default_logpdf_is_finite_where_exact_underflows(self) -> None:
+        """At dim=1024 and kappa=10, the exact Bessel evaluation underflows."""
+        dim: int = 1024
+        kappa: float = 10.0
+        rng = make_rng()
+        mu = random_unit_vector(dim, rng)
+        X = random_sphere_samples(5, dim, rng)
+
+        with pytest.warns(RuntimeWarning, match="divide by zero"):
+            exact = von_mises_fisher_log_normalizing_constant(
+                dim, kappa, method=VmfLogNormalizerMethod.EXACT
+            )
+        logpdf = von_mises_fisher_logpdf(X, mu, kappa=kappa)
+
+        assert not np.isfinite(exact)
+        assert np.all(np.isfinite(logpdf))
 
     def test_make_log_normalizer_returns_correct_function(self) -> None:
         for method in VmfLogNormalizerMethod:
