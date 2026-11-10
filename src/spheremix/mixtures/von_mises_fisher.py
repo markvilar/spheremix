@@ -76,6 +76,9 @@ class VonMisesFisherMixture(SerializableMixin):
         Relative log-likelihood convergence tolerance.
     verbose:
         Log EM iteration progress.
+    seed:
+        Seed for the mean initialiser; the same seed gives the same fit.
+        ``None`` draws a fresh unseeded generator on each fit.
     log_normalizer_method:
         Method for computing the log normalizing constant in scoring functions.
         Does not affect EM convergence (the E-step uses unnormalized log-kernels).
@@ -97,6 +100,7 @@ class VonMisesFisherMixture(SerializableMixin):
     rtol: float = 1e-6
     verbose: bool = False
     log_normalizer_method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER
+    seed: int | None = None
 
     params_: VonMisesFisherMixtureParams | None = field(default=None, init=False)
     log_likelihood_: float = field(default=-np.inf, init=False)
@@ -115,6 +119,7 @@ class VonMisesFisherMixture(SerializableMixin):
             tol=self.tol,
             rtol=self.rtol,
             verbose=self.verbose,
+            seed=self.seed,
         )
         return self
 
@@ -308,6 +313,7 @@ class VonMisesFisherMixture(SerializableMixin):
             "tol": self.tol,
             "rtol": self.rtol,
             "verbose": self.verbose,
+            "seed": self.seed,
             "log_normalizer_method": self.log_normalizer_method.value,
             "log_likelihood_": self.log_likelihood_,
             "n_iter_": self.n_iter_,
@@ -323,6 +329,7 @@ class VonMisesFisherMixture(SerializableMixin):
             tol=data["tol"],
             rtol=data["rtol"],
             verbose=data["verbose"],
+            seed=data.get("seed"),
             log_normalizer_method=VmfLogNormalizerMethod(
                 data.get(
                     "log_normalizer_method", VmfLogNormalizerMethod.AMOS_UPPER.value
@@ -356,12 +363,16 @@ def fit_von_mises_fisher_mixture(
     tol: float = 1e-4,
     rtol: float = 1e-6,
     verbose: bool = False,
+    seed: int | None = None,
 ) -> tuple[VonMisesFisherMixtureParams, float, int]:
     """
     Fit a von Mises-Fisher mixture model via EM.
 
     The M-step uses an analytical mean update and 1D root-finding for
     the concentration parameter.
+
+    ``seed`` seeds the named initialisers; it is ignored when ``init`` is a
+    ``MeanInitStrategy``, which owns its own randomness.
 
     Returns the fitted components, final log-likelihood, and iteration count.
     """
@@ -372,7 +383,7 @@ def fit_von_mises_fisher_mixture(
         raise ValueError("number of features must be 2 or higher")
 
     mean_init: MeanInitStrategy = (
-        create_mean_initializer(init) if isinstance(init, str) else init
+        create_mean_initializer(init, seed=seed) if isinstance(init, str) else init
     )
 
     weights: np.ndarray = _init_component_weights(K)
