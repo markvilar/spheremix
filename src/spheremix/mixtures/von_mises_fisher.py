@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from typing import ClassVar, Literal, Self
 from loguru import logger
 from spheremix.distributions import VmfLogNormalizerMethod
-from spheremix.distributions import von_mises_fisher_logkernel
 from spheremix.distributions import von_mises_fisher_logpdf
 from .base import SerializableMixin, _classification_entropy
 from .initializer import MeanInitStrategy, create_mean_initializer
@@ -143,7 +142,9 @@ class VonMisesFisherMixture(SerializableMixin):
         Returns an array of shape (N, K).
         """
         p = self.get_params()
-        return _compute_responsibilities(X, p.weights, p.means, p.concentrations)
+        return _compute_responsibilities(
+            X, p.weights, p.means, p.concentrations, self.log_normalizer_method
+        )
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
@@ -160,17 +161,11 @@ class VonMisesFisherMixture(SerializableMixin):
         return self.fit(X).predict(X)
 
     def score_samples(self, X: np.ndarray) -> np.ndarray:
-        """Per-sample log p(x | Θ), shape (N,). Uses logpdf (normalized) — the
-        normalising constant varies with kappa and directly affects AIC/BIC."""
+        """Per-sample log p(x | Θ), shape (N,), from the normalised log-pdf."""
         p = self.get_params()
-        K = self.n_components
-        N = X.shape[0]
-        log_joint = np.empty((N, K))
-        for k in range(K):
-            log_joint[:, k] = np.log(p.weights[k]) + von_mises_fisher_logpdf(
-                X, p.means[k], p.concentrations[k], method=self.log_normalizer_method
-            )
-        return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
+        return _compute_log_marginal_densities(
+            X, p.weights, p.means, p.concentrations, self.log_normalizer_method
+        )
 
     def score(self, X: np.ndarray, y: np.ndarray | None = None) -> float:
         """
@@ -396,12 +391,23 @@ def fit_von_mises_fisher_mixture(
     n_iter: int = 0
 
     for i in range(max_iter):
-        resp: np.ndarray = _compute_responsibilities(X, weights, means, concentrations)
+        resp: np.ndarray = _compute_responsibilities(
+            X, weights, means, concentrations, log_normalizer_method
+        )
         weights, means, concentrations = _maximization_step(
             X, resp, D, log_normalizer_method
         )
         converged, log_likelihood = _check_convergence(
-            X, weights, means, concentrations, i, log_likelihood, tol, rtol, verbose
+            X,
+            weights,
+            means,
+            concentrations,
+            log_normalizer_method,
+            i,
+            log_likelihood,
+            tol,
+            rtol,
+            verbose,
         )
         n_iter = i + 1
         if converged:
@@ -425,18 +431,20 @@ def _compute_log_joint_densities(
     weights: np.ndarray,
     means: np.ndarray,
     concentrations: np.ndarray,
+    log_normalizer_method: VmfLogNormalizerMethod,
 ) -> np.ndarray:
     """
-    Compute log p(x_n, z=k | Θ) = log w_k + log_kernel(x_n | μ_k, κ_k).
-    Returns shape (N, K). Uses logkernel (unnormalized) for EM efficiency.
+    Compute log p(x_n, z=k | Θ) = log w_k + log_pdf(x_n | μ_k, κ_k) for all
+    samples and components, with the normaliser given by ``log_normalizer_method``.
+    Returns shape (N, K).
     """
     K: int = len(weights)
     N: int = X.shape[0]
 
     log_joint: np.ndarray = np.empty((N, K))
     for k in range(K):
-        log_joint[:, k] = np.log(weights[k]) + von_mises_fisher_logkernel(
-            X, means[k], concentrations[k]
+        log_joint[:, k] = np.log(weights[k]) + von_mises_fisher_logpdf(
+            X, means[k], concentrations[k], method=log_normalizer_method
         )
 
     return log_joint  # type: ignore[no-any-return]
@@ -447,13 +455,13 @@ def _compute_log_marginal_densities(
     weights: np.ndarray,
     means: np.ndarray,
     concentrations: np.ndarray,
+    log_normalizer_method: VmfLogNormalizerMethod,
 ) -> np.ndarray:
     """
-    Compute log(Σ_k w_k · kernel_k(x_n)) for each sample. Returns shape (N,).
-    Non-normalized; valid for convergence checking only.
+    Compute the observed-data log p(x_n | Θ) for each sample. Returns shape (N,).
     """
     log_joint: np.ndarray = _compute_log_joint_densities(
-        X, weights, means, concentrations
+        X, weights, means, concentrations, log_normalizer_method
     )
     return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
 
@@ -463,12 +471,13 @@ def _compute_posterior_densities(
     weights: np.ndarray,
     means: np.ndarray,
     concentrations: np.ndarray,
+    log_normalizer_method: VmfLogNormalizerMethod,
 ) -> np.ndarray:
     """
     Compute p(z=k | x_n, Θ) for all samples via log-sum-exp. Returns shape (N, K).
     """
     log_joint: np.ndarray = _compute_log_joint_densities(
-        X, weights, means, concentrations
+        X, weights, means, concentrations, log_normalizer_method
     )
     log_marginal: np.ndarray = np.logaddexp.reduce(log_joint, axis=1)
     log_resp: np.ndarray = log_joint - log_marginal[:, np.newaxis]
@@ -480,9 +489,12 @@ def _compute_responsibilities(
     weights: np.ndarray,
     means: np.ndarray,
     concentrations: np.ndarray,
+    log_normalizer_method: VmfLogNormalizerMethod,
 ) -> np.ndarray:
     """EM alias for _compute_posterior_densities. Returns shape (N, K)."""
-    return _compute_posterior_densities(X, weights, means, concentrations)  # type: ignore[no-any-return]
+    return _compute_posterior_densities(
+        X, weights, means, concentrations, log_normalizer_method
+    )  # type: ignore[no-any-return]
 
 
 def _maximization_step(
@@ -632,6 +644,7 @@ def _check_convergence(
     weights: np.ndarray,
     means: np.ndarray,
     concentrations: np.ndarray,
+    log_normalizer_method: VmfLogNormalizerMethod,
     iteration: int,
     prev_loglik: float,
     tol: float,
@@ -643,7 +656,9 @@ def _check_convergence(
     Returns (converged, loglik).
     """
     loglik: float = float(
-        _compute_log_marginal_densities(X, weights, means, concentrations).sum()
+        _compute_log_marginal_densities(
+            X, weights, means, concentrations, log_normalizer_method
+        ).sum()
     )
 
     if verbose:

@@ -8,7 +8,6 @@ import scipy.optimize
 from dataclasses import dataclass, field
 from typing import ClassVar, Literal, Self
 from loguru import logger
-from spheremix.distributions import power_spherical_logkernel
 from spheremix.distributions import power_spherical_logpdf
 from .base import SerializableMixin, _classification_entropy
 from .initializer import MeanInitStrategy, create_mean_initializer
@@ -152,17 +151,9 @@ class PowerSphericalMixture(SerializableMixin):
         return self.fit(X).predict(X)
 
     def score_samples(self, X: np.ndarray) -> np.ndarray:
-        """Per-sample log p(x | Θ), shape (N,). Uses logpdf (normalized) — the
-        normalising constant varies with kappa and directly affects AIC/BIC."""
+        """Per-sample log p(x | Θ), shape (N,), from the normalised log-pdf."""
         p = self.get_params()
-        K = self.n_components
-        N = X.shape[0]
-        log_joint = np.empty((N, K))
-        for k in range(K):
-            log_joint[:, k] = np.log(p.weights[k]) + power_spherical_logpdf(
-                X, p.means[k], p.concentrations[k]
-            )
-        return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
+        return _compute_log_marginal_densities(X, p.weights, p.means, p.concentrations)
 
     def score(self, X: np.ndarray, y: np.ndarray | None = None) -> float:
         """
@@ -408,15 +399,15 @@ def _compute_log_joint_densities(
     concentrations: np.ndarray,
 ) -> np.ndarray:
     """
-    Compute log p(x_n, z=k | Θ) = log w_k + log_kernel(x_n | μ_k, κ_k).
-    Returns shape (N, K). Uses logkernel (unnormalized) for EM efficiency.
+    Compute log p(x_n, z=k | Θ) = log w_k + log_pdf(x_n | μ_k, θ_k) for all
+    samples and components. Returns shape (N, K).
     """
     K: int = len(weights)
     N: int = X.shape[0]
 
     log_joint: np.ndarray = np.empty((N, K))
     for k in range(K):
-        log_joint[:, k] = np.log(weights[k]) + power_spherical_logkernel(
+        log_joint[:, k] = np.log(weights[k]) + power_spherical_logpdf(
             X, means[k], concentrations[k]
         )
 
@@ -430,8 +421,7 @@ def _compute_log_marginal_densities(
     concentrations: np.ndarray,
 ) -> np.ndarray:
     """
-    Compute log(Σ_k w_k · kernel_k(x_n)) for each sample. Returns shape (N,).
-    Non-normalized; valid for convergence checking only.
+    Compute the observed-data log p(x_n | Θ) for each sample. Returns shape (N,).
     """
     log_joint: np.ndarray = _compute_log_joint_densities(
         X, weights, means, concentrations
