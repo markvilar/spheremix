@@ -34,11 +34,14 @@ class VmfLogNormalizerMethod(enum.StrEnum):
     ----------
     EXACT:
         Exact computation via the modified Bessel function (scipy.special.ive).
-        Numerically stable for moderate kappa and dimension, but can underflow
-        in high dimensions or at large kappa.
+        Accurate where finite, but the Bessel function underflows when kappa is
+        small relative to the dimension, giving a non-finite result (e.g. for
+        kappa below about 0.1 * dim at dim = 1024).
     AMOS_UPPER:
         Upper bound on the log normalizing constant. Closed-form, no Bessel
-        evaluation, stable across all dimensions and concentrations.
+        evaluation, stable across all dimensions and concentrations. Relative
+        error is largest, up to about 1e-2, when kappa is close to the
+        dimension. The default.
     AMOS_LOWER:
         Lower bound on the log normalizing constant. Closed-form, no Bessel
         evaluation, stable across all dimensions and concentrations.
@@ -281,7 +284,7 @@ _LOG_NORM_CONSTANT_FN_REGISTRY: dict[
 def von_mises_fisher_log_normalizing_constant(
     dim: int,
     kappa: float,
-    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.EXACT,
+    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER,
 ) -> float:
     """
     Log normalizing constant of the von Mises-Fisher distribution.
@@ -295,7 +298,7 @@ def von_mises_fisher_log_normalizing_constant(
     method : VmfLogNormalizerMethod
         Computation method. EXACT uses the modified Bessel function;
         AMOS_UPPER and AMOS_LOWER are closed-form bounds with better
-        numerical stability. Default is EXACT.
+        numerical stability. Default is AMOS_UPPER.
 
     Returns
     -------
@@ -392,7 +395,7 @@ def von_mises_fisher_logpdf(
     mu: np.ndarray,
     kappa: float,
     *,
-    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.EXACT,
+    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER,
     check_input: bool = True,
     eps: float = 1e-12,
 ) -> np.ndarray:
@@ -409,7 +412,7 @@ def von_mises_fisher_logpdf(
     kappa : float
         Concentration parameter >= 0.
     method : VmfLogNormalizerMethod
-        Method for computing the log normalizing constant. Default is EXACT.
+        Method for computing the log normalizing constant. Default is AMOS_UPPER.
     check_input : bool, default=True
         If True, validates shapes, kappa range, and approximate unit norms.
     eps : float, default=1e-12
@@ -464,7 +467,7 @@ def von_mises_fisher_pdf(
     mu: np.ndarray,
     kappa: float,
     *,
-    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.EXACT,
+    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER,
     check_input: bool = True,
     eps: float = 1e-12,
 ) -> np.ndarray:
@@ -480,7 +483,7 @@ def von_mises_fisher_pdf(
     kappa : float
         Concentration parameter >= 0.
     method : VmfLogNormalizerMethod
-        Method for computing the log normalizing constant. Default is EXACT.
+        Method for computing the log normalizing constant. Default is AMOS_UPPER.
     check_input : bool, default=True
         If True, validates shapes, kappa range, and approximate unit norms.
     eps : float, default=1e-12
