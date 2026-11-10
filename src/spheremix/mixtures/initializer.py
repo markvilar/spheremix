@@ -8,6 +8,8 @@ import numpy as np
 
 from typing import Literal, Protocol
 
+from spheremix.distributions import sample_uniform_sphere
+
 
 class MeanInitStrategy(Protocol):
     """Callable that initializes K cluster means from data X."""
@@ -33,7 +35,7 @@ def _random_mean_initializer(
     rng: np.random.Generator | None = None,
 ) -> MeanInitStrategy:
     """
-    Return an initializer that draws random uniform unit vectors.
+    Return an initializer that draws unit vectors uniformly on the sphere.
 
     Parameters
     ----------
@@ -43,10 +45,7 @@ def _random_mean_initializer(
     _rng: np.random.Generator = rng if rng is not None else np.random.default_rng()
 
     def initialize(X: np.ndarray, K: int) -> np.ndarray:
-        D: int = X.shape[1]
-        means: np.ndarray = _rng.uniform(size=(K, D))
-        norms: np.ndarray = np.linalg.norm(means, axis=1, keepdims=True)
-        return means / np.maximum(norms, 1e-12)  # type: ignore[no-any-return]
+        return sample_uniform_sphere(K, X.shape[1], rng=_rng)
 
     return initialize
 
@@ -97,7 +96,7 @@ def create_mean_initializer(method: Literal["random", "kmeans"]) -> MeanInitStra
     Parameters
     ----------
     method : {"random", "kmeans"}
-        ``"random"``  — random uniform unit vectors (fast, order-independent).
+        ``"random"``  — unit vectors drawn uniformly on the sphere (fast, order-independent).
         ``"kmeans"``  — Spherical K-means warm start (slower, better starting point).
 
     Returns
