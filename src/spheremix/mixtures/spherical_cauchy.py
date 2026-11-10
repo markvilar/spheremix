@@ -8,7 +8,6 @@ import scipy.optimize
 from dataclasses import dataclass, field
 from typing import ClassVar, Literal, Self
 from loguru import logger
-from spheremix.distributions import spherical_cauchy_logkernel
 from spheremix.distributions import spherical_cauchy_logpdf
 from .base import SerializableMixin, _classification_entropy
 from .initializer import MeanInitStrategy, create_mean_initializer
@@ -74,6 +73,9 @@ class SphericalCauchyMixture(SerializableMixin):
         Relative log-likelihood convergence tolerance.
     verbose:
         Log EM iteration progress.
+    seed:
+        Seed for the mean initialiser; the same seed gives the same fit.
+        ``None`` draws a fresh unseeded generator on each fit.
     params_:
         Fitted mixture components; ``None`` until ``fit()`` is called.
     log_likelihood_:
@@ -90,6 +92,7 @@ class SphericalCauchyMixture(SerializableMixin):
     tol: float = 1e-4
     rtol: float = 1e-6
     verbose: bool = False
+    seed: int | None = None
 
     # Fitted state — set by fit(), replaced atomically on each call
     params_: SphericalCauchyMixtureParams | None = field(default=None, init=False)
@@ -109,6 +112,7 @@ class SphericalCauchyMixture(SerializableMixin):
             tol=self.tol,
             rtol=self.rtol,
             verbose=self.verbose,
+            seed=self.seed,
         )
         return self
 
@@ -262,17 +266,9 @@ class SphericalCauchyMixture(SerializableMixin):
         return float(-2.0 * log_likelihood + 2.0 * entropy + 2.0 * n_params)
 
     def score_samples(self, X: np.ndarray) -> np.ndarray:
-        """Per-sample log p(x | Θ), shape (N,). Must use logpdf not logkernel —
-        the normalising constant varies with ρ and directly affects AIC/BIC."""
+        """Per-sample log p(x | Θ), shape (N,), from the normalised log-pdf."""
         p = self.get_params()
-        K = self.n_components
-        N = X.shape[0]
-        log_joint = np.empty((N, K))
-        for k in range(K):
-            log_joint[:, k] = np.log(p.weights[k]) + spherical_cauchy_logpdf(
-                X, p.means[k], p.concentrations[k]
-            )
-        return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
+        return _compute_log_marginal_densities(X, p.weights, p.means, p.concentrations)
 
     def score(self, X: np.ndarray, y: np.ndarray | None = None) -> float:
         """
@@ -302,6 +298,7 @@ class SphericalCauchyMixture(SerializableMixin):
             "tol": self.tol,
             "rtol": self.rtol,
             "verbose": self.verbose,
+            "seed": self.seed,
             "log_likelihood_": self.log_likelihood_,
             "n_iter_": self.n_iter_,
             "params_": self.params_.to_dict() if self.params_ is not None else None,
@@ -316,6 +313,7 @@ class SphericalCauchyMixture(SerializableMixin):
             tol=data["tol"],
             rtol=data["rtol"],
             verbose=data["verbose"],
+            seed=data.get("seed"),
         )
         model.log_likelihood_ = data["log_likelihood_"]
         model.n_iter_ = data["n_iter_"]
@@ -344,9 +342,13 @@ def fit_spherical_cauchy_mixture(
     tol: float = 1e-4,
     rtol: float = 1e-6,
     verbose: bool = False,
+    seed: int | None = None,
 ) -> tuple[SphericalCauchyMixtureParams, float, int]:
     """
     Fit a Spherical Cauchy mixture model via EM.
+
+    ``seed`` seeds the named initialisers; it is ignored when ``init`` is a
+    ``MeanInitStrategy``, which owns its own randomness.
 
     Returns the fitted components, final log-likelihood, and iteration count.
     """
@@ -357,7 +359,7 @@ def fit_spherical_cauchy_mixture(
         raise ValueError("number of features must be 2 or higher")
 
     mean_init: MeanInitStrategy = (
-        create_mean_initializer(init) if isinstance(init, str) else init
+        create_mean_initializer(init, seed=seed) if isinstance(init, str) else init
     )
 
     weights: np.ndarray = _init_component_weights(K)
@@ -398,21 +400,18 @@ def _compute_log_joint_densities(
     concentrations: np.ndarray,
 ) -> np.ndarray:
     """
-    Compute log p(x_n, z=k | Θ) = log w_k + log_kernel(x_n | μ_k, ρ_k) for all
+    Compute log p(x_n, z=k | Θ) = log w_k + log_pdf(x_n | μ_k, θ_k) for all
     samples and components. Returns shape (N, K).
-
-    Values use the log-kernel rather than the log-pdf, so they are offset by the
-    rho-dependent normalising constant of the Spherical Cauchy distribution.
     """
     K: int = len(weights)
     N: int = X.shape[0]
 
     log_joint: np.ndarray = np.empty((N, K))
     for k in range(K):
-        log_kernel: np.ndarray = spherical_cauchy_logkernel(
+        log_density: np.ndarray = spherical_cauchy_logpdf(
             X, means[k], concentrations[k]
         )
-        log_joint[:, k] = np.log(weights[k]) + log_kernel
+        log_joint[:, k] = np.log(weights[k]) + log_density
 
     return log_joint  # type: ignore[no-any-return]
 
@@ -424,10 +423,7 @@ def _compute_log_marginal_densities(
     concentrations: np.ndarray,
 ) -> np.ndarray:
     """
-    Compute log(Σ_k w_k · kernel_k(x_n)) for each sample. Returns shape (N,).
-
-    Values are non-normalised (see _compute_log_joint_densities), so the result
-    is valid for convergence checking but is not the true log-likelihood.
+    Compute the observed-data log p(x_n | Θ) for each sample. Returns shape (N,).
     """
     log_joint: np.ndarray = _compute_log_joint_densities(
         X, weights, means, concentrations

@@ -17,10 +17,39 @@ Directional Statistics.
 John Wiley & Sons.
 """
 
+import enum
 import numpy as np
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from enum import auto
 from scipy.special import gammaln, ive
+
+
+class VmfLogNormalizerMethod(enum.StrEnum):
+    """
+    Method for computing the vMF log normalizing constant.
+
+    Attributes
+    ----------
+    EXACT:
+        Exact computation via the modified Bessel function (scipy.special.ive).
+        Accurate where finite, but the Bessel function underflows when kappa is
+        small relative to the dimension, giving a non-finite result (e.g. for
+        kappa below about 0.1 * dim at dim = 1024).
+    AMOS_UPPER:
+        Upper bound on the log normalizing constant. Closed-form, no Bessel
+        evaluation, stable across all dimensions and concentrations. Relative
+        error is largest, up to about 1e-2, when kappa is close to the
+        dimension. The default.
+    AMOS_LOWER:
+        Lower bound on the log normalizing constant. Closed-form, no Bessel
+        evaluation, stable across all dimensions and concentrations.
+    """
+
+    EXACT = auto()
+    AMOS_UPPER = auto()
+    AMOS_LOWER = auto()
 
 
 @dataclass(slots=True, frozen=True)
@@ -181,26 +210,124 @@ def sample_von_mises_fisher(
     return X  # type: ignore[no-any-return]
 
 
-def von_mises_fisher_log_normalizing_constant(dim: int, kappa: float) -> float:
+def _log_normalizer_exact(dim: int, kappa: float) -> float:
     """
-    Log normalizing constant of the von Mises-Fisher distribution.
+    Exact log normalizing constant via the modified Bessel function of the first kind.
 
     For kappa > 0:
         log C_d(kappa) = (d/2-1)*log(kappa) - (d/2)*log(2*pi) - log(I_{d/2-1}(kappa))
 
-    where I_v denotes the modified Bessel function of the first kind of order v,
-    evaluated via ``scipy.special.ive`` (exponentially scaled) for numerical
-    stability at large kappa.
-
-    For kappa = 0, returns the log surface-area normalizer of the uniform distribution
-    on S^{d-1}: log(Gamma(d/2) / (2 * pi^{d/2})).
+    where I_v is evaluated via ``scipy.special.ive`` (exponentially scaled) for
+    numerical stability at large kappa.
     """
     v: float = dim / 2.0 - 1.0
     if kappa == 0.0:
         return float(gammaln(dim / 2.0) - np.log(2.0) - (dim / 2.0) * np.log(np.pi))
-    # ive(v, kappa) = I_v(kappa) * exp(-kappa), so log I_v(kappa) = log(ive) + kappa
     log_bessel: float = float(np.log(ive(v, kappa)) + kappa)
     return float(v * np.log(kappa) - (dim / 2.0) * np.log(2.0 * np.pi) - log_bessel)
+
+
+def _log_normalizer_amos_upper(dim: int, kappa: float) -> float:
+    """
+    Upper bound on the vMF log normalizing constant via Amos-type Bessel bounds.
+
+    Derived by bounding the Bessel function ratio I_{d/2}/I_{d/2-1} from below
+    and integrating the identity d/dkappa log C_d = -I_{d/2}/I_{d/2-1} in closed
+    form.
+
+    References
+    ----------
+    Amos, D. E. (1974). Computation of modified Bessel functions and their ratios.
+    Mathematics of Computation, 28(125), 239-251. https://doi.org/10.2307/2005574
+    """
+    log_c0: float = float(
+        gammaln(dim / 2.0) - np.log(2.0) - (dim / 2.0) * np.log(np.pi)
+    )
+    a: float = (dim - 1) / 2.0
+    b: float = a + 1.0
+    sqrt_val: float = float(np.sqrt(kappa**2 + b**2))
+    integral: float = sqrt_val - b - a * float(np.log((a + sqrt_val) / (2.0 * a + 1.0)))
+    return float(log_c0 - integral)
+
+
+def _log_normalizer_amos_lower(dim: int, kappa: float) -> float:
+    """
+    Lower bound on the vMF log normalizing constant via Amos-type Bessel bounds.
+
+    Derived by bounding the Bessel function ratio I_{d/2}/I_{d/2-1} from above
+    and integrating the identity d/dkappa log C_d = -I_{d/2}/I_{d/2-1} in closed
+    form.
+
+    References
+    ----------
+    Amos, D. E. (1974). Computation of modified Bessel functions and their ratios.
+    Mathematics of Computation, 28(125), 239-251. https://doi.org/10.2307/2005574
+    """
+    log_c0: float = float(
+        gammaln(dim / 2.0) - np.log(2.0) - (dim / 2.0) * np.log(np.pi)
+    )
+    a: float = (dim - 1) / 2.0
+    sqrt_val: float = float(np.sqrt(kappa**2 + a**2))
+    integral: float = sqrt_val - a - a * float(np.log((a + sqrt_val) / (2.0 * a)))
+    return float(log_c0 - integral)
+
+
+_LOG_NORM_CONSTANT_FN_REGISTRY: dict[
+    VmfLogNormalizerMethod, Callable[[int, float], float]
+] = {
+    VmfLogNormalizerMethod.EXACT: _log_normalizer_exact,
+    VmfLogNormalizerMethod.AMOS_UPPER: _log_normalizer_amos_upper,
+    VmfLogNormalizerMethod.AMOS_LOWER: _log_normalizer_amos_lower,
+}
+
+
+def von_mises_fisher_log_normalizing_constant(
+    dim: int,
+    kappa: float,
+    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER,
+) -> float:
+    """
+    Log normalizing constant of the von Mises-Fisher distribution.
+
+    Arguments
+    ---------
+    dim : int
+        Dimension of the ambient space (data lies on S^{dim-1}).
+    kappa : float
+        Concentration parameter >= 0.
+    method : VmfLogNormalizerMethod
+        Computation method. EXACT uses the modified Bessel function;
+        AMOS_UPPER and AMOS_LOWER are closed-form bounds with better
+        numerical stability. Default is AMOS_UPPER.
+
+    Returns
+    -------
+    float
+        Log normalizing constant log C_d(kappa).
+    """
+    return _LOG_NORM_CONSTANT_FN_REGISTRY[method](dim, kappa)
+
+
+def make_log_normalizer(
+    method: VmfLogNormalizerMethod,
+) -> Callable[[int, float], float]:
+    """
+    Return the log normalizing constant function for the given method.
+
+    Useful for binding the method once and passing a plain callable through
+    the EM loop or scoring functions without threading the enum at every call.
+
+    Arguments
+    ---------
+    method : VmfLogNormalizerMethod
+        Computation method to retrieve.
+
+    Returns
+    -------
+    Callable[[int, float], float]
+        Function with signature ``(dim, kappa) -> float``.
+    """
+    return _LOG_NORM_CONSTANT_FN_REGISTRY[method]
 
 
 def von_mises_fisher_logkernel(
@@ -268,6 +395,7 @@ def von_mises_fisher_logpdf(
     mu: np.ndarray,
     kappa: float,
     *,
+    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER,
     check_input: bool = True,
     eps: float = 1e-12,
 ) -> np.ndarray:
@@ -283,6 +411,8 @@ def von_mises_fisher_logpdf(
         Mean direction / mode, expected to have unit norm.
     kappa : float
         Concentration parameter >= 0.
+    method : VmfLogNormalizerMethod
+        Method for computing the log normalizing constant. Default is AMOS_UPPER.
     check_input : bool, default=True
         If True, validates shapes, kappa range, and approximate unit norms.
     eps : float, default=1e-12
@@ -319,7 +449,9 @@ def von_mises_fisher_logpdf(
         mu = mu / max(mu_norm, eps)
 
     dim: int = X.shape[1]
-    log_constant: float = von_mises_fisher_log_normalizing_constant(dim, kappa)
+    log_constant: float = von_mises_fisher_log_normalizing_constant(
+        dim, kappa, method=method
+    )
     logkernel: np.ndarray = von_mises_fisher_logkernel(
         X=X,
         mu=mu,
@@ -335,6 +467,7 @@ def von_mises_fisher_pdf(
     mu: np.ndarray,
     kappa: float,
     *,
+    method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER,
     check_input: bool = True,
     eps: float = 1e-12,
 ) -> np.ndarray:
@@ -349,6 +482,8 @@ def von_mises_fisher_pdf(
         Mean direction / mode, expected to have unit norm.
     kappa : float
         Concentration parameter >= 0.
+    method : VmfLogNormalizerMethod
+        Method for computing the log normalizing constant. Default is AMOS_UPPER.
     check_input : bool, default=True
         If True, validates shapes, kappa range, and approximate unit norms.
     eps : float, default=1e-12
@@ -363,6 +498,7 @@ def von_mises_fisher_pdf(
         X=X,
         mu=mu,
         kappa=kappa,
+        method=method,
         check_input=check_input,
         eps=eps,
     )

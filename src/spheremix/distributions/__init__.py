@@ -19,8 +19,11 @@ from .spherical_cauchy import (
 )
 
 from .vonmises import (
+    VmfLogNormalizerMethod as VmfLogNormalizerMethod,
     VonMisesFisherDistribution as VonMisesFisherDistribution,
+    make_log_normalizer as make_log_normalizer,
     sample_von_mises_fisher as sample_von_mises_fisher,
+    von_mises_fisher_log_normalizing_constant as von_mises_fisher_log_normalizing_constant,
     von_mises_fisher_logkernel as von_mises_fisher_logkernel,
     von_mises_fisher_logpdf as von_mises_fisher_logpdf,
     von_mises_fisher_pdf as von_mises_fisher_pdf,
@@ -32,6 +35,10 @@ from .power_spherical import (
     power_spherical_logkernel as power_spherical_logkernel,
     power_spherical_logpdf as power_spherical_logpdf,
     power_spherical_pdf as power_spherical_pdf,
+)
+
+from .utilities import (
+    sample_uniform_sphere as sample_uniform_sphere,
 )
 
 __all__ = []

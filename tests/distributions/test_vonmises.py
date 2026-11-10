@@ -26,8 +26,11 @@ from scipy.special import gammaln
 from scipy.stats import vonmises as scipy_vonmises
 
 from spheremix.distributions import (
+    VmfLogNormalizerMethod,
     VonMisesFisherDistribution,
+    make_log_normalizer,
     sample_von_mises_fisher,
+    von_mises_fisher_log_normalizing_constant,
     von_mises_fisher_logkernel,
     von_mises_fisher_logpdf,
     von_mises_fisher_pdf,
@@ -240,7 +243,9 @@ class TestLogPDF:
         angles = rng.uniform(0, 2 * np.pi, size=50)
         X = np.column_stack([np.cos(angles), np.sin(angles)])
 
-        our_logpdf = von_mises_fisher_logpdf(X, mu, kappa=kappa)
+        our_logpdf = von_mises_fisher_logpdf(
+            X, mu, kappa=kappa, method=VmfLogNormalizerMethod.EXACT
+        )
 
         # scipy uses the signed angular deviation from the mean
         delta = angles - theta_mu
@@ -259,7 +264,9 @@ class TestLogPDF:
         rng = make_rng()
         mu = random_unit_vector(3, rng)
         X = random_sphere_samples(100, 3, rng)
-        our_logpdf = von_mises_fisher_logpdf(X, mu, kappa=kappa)
+        our_logpdf = von_mises_fisher_logpdf(
+            X, mu, kappa=kappa, method=VmfLogNormalizerMethod.EXACT
+        )
         ref_logpdf = vmf_logpdf_d3_analytical(X, mu, kappa)
         assert_allclose(our_logpdf, ref_logpdf, rtol=1e-7)
 
@@ -275,7 +282,9 @@ class TestLogPDF:
         rng = make_rng()
         mu = random_unit_vector(d, rng)
         X_unif = random_sphere_samples(N_SAMPLES, d, rng)
-        pdf_vals = von_mises_fisher_pdf(X_unif, mu, kappa=kappa)
+        pdf_vals = von_mises_fisher_pdf(
+            X_unif, mu, kappa=kappa, method=VmfLogNormalizerMethod.EXACT
+        )
         mc_integral = pdf_vals.mean() * sphere_surface_area(d)
         # std of the estimator ≈ std(pdf) / sqrt(N) * surface_area
         se = pdf_vals.std() / np.sqrt(N_SAMPLES) * sphere_surface_area(d)
@@ -476,3 +485,104 @@ class TestVonMisesFisherDistribution:
         X = random_sphere_samples(30, 3, self.rng)
         shift = self.dist.logpdf(X) - self.dist.logkernel(X)
         assert_allclose(shift, shift[0], atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# 6. VmfLogNormalizerMethod — enum, registry, and Amos bounds
+# ---------------------------------------------------------------------------
+
+
+class TestVmfLogNormalizerMethod:
+    @pytest.mark.parametrize("method", list(VmfLogNormalizerMethod))
+    @pytest.mark.parametrize("dim", [2, 3, 5, 10, 50])
+    @pytest.mark.parametrize("kappa", [0.0, 0.1, 1.0, 10.0, 100.0])
+    def test_all_methods_return_finite(
+        self, method: VmfLogNormalizerMethod, dim: int, kappa: float
+    ) -> None:
+        result = von_mises_fisher_log_normalizing_constant(dim, kappa, method=method)
+        assert np.isfinite(result), f"method={method}, dim={dim}, kappa={kappa}"
+
+    @pytest.mark.parametrize("dim", [2, 3, 5, 10, 50])
+    @pytest.mark.parametrize("kappa", [0.0, 0.1, 1.0, 10.0, 100.0])
+    def test_amos_bounds_bracket_exact(self, dim: int, kappa: float) -> None:
+        exact = von_mises_fisher_log_normalizing_constant(
+            dim, kappa, method=VmfLogNormalizerMethod.EXACT
+        )
+        upper = von_mises_fisher_log_normalizing_constant(
+            dim, kappa, method=VmfLogNormalizerMethod.AMOS_UPPER
+        )
+        lower = von_mises_fisher_log_normalizing_constant(
+            dim, kappa, method=VmfLogNormalizerMethod.AMOS_LOWER
+        )
+        assert (
+            lower <= exact + 1e-9
+        ), f"dim={dim}, kappa={kappa}: lower={lower} > exact={exact}"
+        assert (
+            upper >= exact - 1e-9
+        ), f"dim={dim}, kappa={kappa}: upper={upper} < exact={exact}"
+
+    @pytest.mark.parametrize("dim", [2, 3, 5])
+    @pytest.mark.parametrize("kappa", [0.0, 1.0, 10.0])
+    def test_all_methods_agree_at_kappa_zero(self, dim: int, kappa: float) -> None:
+        if kappa != 0.0:
+            return
+        exact = von_mises_fisher_log_normalizing_constant(
+            dim, kappa, method=VmfLogNormalizerMethod.EXACT
+        )
+        upper = von_mises_fisher_log_normalizing_constant(
+            dim, kappa, method=VmfLogNormalizerMethod.AMOS_UPPER
+        )
+        lower = von_mises_fisher_log_normalizing_constant(
+            dim, kappa, method=VmfLogNormalizerMethod.AMOS_LOWER
+        )
+        assert_allclose(upper, exact, atol=1e-10)
+        assert_allclose(lower, exact, atol=1e-10)
+
+    def test_default_method_is_amos_upper(self) -> None:
+        result_default = von_mises_fisher_log_normalizing_constant(3, 2.0)
+        result_upper = von_mises_fisher_log_normalizing_constant(
+            3, 2.0, method=VmfLogNormalizerMethod.AMOS_UPPER
+        )
+        assert result_default == result_upper
+
+    def test_default_logpdf_is_finite_where_exact_underflows(self) -> None:
+        """At dim=1024 and kappa=10, the exact Bessel evaluation underflows."""
+        dim: int = 1024
+        kappa: float = 10.0
+        rng = make_rng()
+        mu = random_unit_vector(dim, rng)
+        X = random_sphere_samples(5, dim, rng)
+
+        with pytest.warns(RuntimeWarning, match="divide by zero"):
+            exact = von_mises_fisher_log_normalizing_constant(
+                dim, kappa, method=VmfLogNormalizerMethod.EXACT
+            )
+        logpdf = von_mises_fisher_logpdf(X, mu, kappa=kappa)
+
+        assert not np.isfinite(exact)
+        assert np.all(np.isfinite(logpdf))
+
+    def test_make_log_normalizer_returns_correct_function(self) -> None:
+        for method in VmfLogNormalizerMethod:
+            fn = make_log_normalizer(method)
+            direct = von_mises_fisher_log_normalizing_constant(3, 2.0, method=method)
+            assert fn(3, 2.0) == direct
+
+    @pytest.mark.parametrize("method", list(VmfLogNormalizerMethod))
+    def test_logpdf_method_parameter_propagates(
+        self, method: VmfLogNormalizerMethod
+    ) -> None:
+        rng = make_rng()
+        mu = random_unit_vector(3, rng)
+        X = random_sphere_samples(10, 3, rng)
+        lp = von_mises_fisher_logpdf(X, mu, kappa=2.0, method=method)
+        expected_shift = von_mises_fisher_log_normalizing_constant(
+            3, 2.0, method=method
+        )
+        lk = von_mises_fisher_logkernel(X, mu, kappa=2.0)
+        assert_allclose(lp, expected_shift + lk, rtol=1e-12)
+
+    def test_str_enum_values(self) -> None:
+        assert VmfLogNormalizerMethod.EXACT == "exact"
+        assert VmfLogNormalizerMethod.AMOS_UPPER == "amos_upper"
+        assert VmfLogNormalizerMethod.AMOS_LOWER == "amos_lower"
