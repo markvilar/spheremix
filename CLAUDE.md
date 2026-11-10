@@ -86,6 +86,20 @@ Issues are tracked on project #17 (`github.com/users/markvilar/projects/17`). Mo
 
 ### Issues
 
+- Prefix every issue title with its category, e.g. `Fix: vMF mixture M-step fails for D >= 3`. Keep the subject in the rest of the title rather than adding a second prefix. Name the issue's branch after the category, as in the table below.
+
+  | Prefix         | Branch type    | Use for                                                          |
+  |----------------|----------------|------------------------------------------------------------------|
+  | `Fix:`         | `fix/`         | Wrong behaviour, crashes, numerical failures                     |
+  | `Feature:`     | `feature/`     | New public functionality                                         |
+  | `Refactor:`    | `refactor/`    | Internal restructuring, or API redesign without new functionality |
+  | `Performance:` | `perf/`        | Speed or memory improvements with the same results               |
+  | `Docs:`        | `docs/`        | Docstrings, guides, ADRs                                         |
+  | `Test:`        | `test/`        | Test-only changes                                                |
+  | `Chore:`       | `chore/`       | Tooling, CI, dependencies, packaging, agent guidelines           |
+  | `Tracking:`    | none           | Umbrella issues split into sub-issues                            |
+  | `Reference:`   | none           | Links to resources, scientific papers and other reference material |
+
 - Assign new issues to `markvilar` and give them the Backlog status.
 - Structure the issue body as numbered sections:
 
