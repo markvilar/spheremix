@@ -40,6 +40,9 @@ class SphericalMixtureComponents(Protocol):
         Number of components, K.
     dimension:
         Dimension of the ambient space, D, of the unit vectors.
+    free_parameter_count:
+        Number of free parameters of the mixture, used by the information
+        criteria.
     """
 
     @property
@@ -53,6 +56,9 @@ class SphericalMixtureComponents(Protocol):
 
     @property
     def dimension(self) -> int: ...
+
+    @property
+    def free_parameter_count(self) -> int: ...
 
     def log_joint_densities(self, X: np.ndarray) -> np.ndarray:
         """

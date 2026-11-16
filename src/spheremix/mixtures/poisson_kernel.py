@@ -94,6 +94,14 @@ class PoissonKernelMixtureComponents:
         """Dimension of the ambient space, D, of the unit vectors."""
         return int(self.means.shape[1])
 
+    @property
+    def free_parameter_count(self) -> int:
+        """
+        Number of free parameters, K * (D + 1) - 1: K - 1 weights, and D - 1
+        for the unit mean and 1 for the concentration of each component.
+        """
+        return self.component_count * (self.dimension + 1) - 1
+
     def log_joint_densities(self, X: np.ndarray) -> np.ndarray:
         """
         Compute log w_k + log p(x_n | mu_k, rho_k) of each sample and component.

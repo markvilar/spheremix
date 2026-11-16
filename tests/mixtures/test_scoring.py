@@ -20,14 +20,13 @@ from spheremix.mixtures import (
     compute_log_likelihoods,
     compute_responsibilities,
 )
-from spheremix.mixtures.scoring import (
-    _classification_entropy,
-    _count_free_parameters,
-)
+from spheremix.mixtures.scoring import _classification_entropy
 
 N_SAMPLES: int = 20
 N_COMPONENTS: int = 3
 N_FEATURES: int = 4
+# Deliberately not K * (D + 1) - 1, so the criteria must read the property.
+N_FREE_PARAMETERS: int = 7
 
 
 @dataclass(slots=True, frozen=True)
@@ -37,6 +36,7 @@ class _FixedComponents:
     weights: NDArray[np.float64]
     means: NDArray[np.float64]
     log_joint: NDArray[np.float64]
+    free_parameter_count: int
 
     @property
     def component_count(self) -> int:
@@ -65,6 +65,7 @@ def components() -> _FixedComponents:
         weights=np.full(N_COMPONENTS, 1.0 / N_COMPONENTS),
         means=np.eye(N_FEATURES)[:N_COMPONENTS],
         log_joint=rng.normal(-2.0, 1.0, (N_SAMPLES, N_COMPONENTS)),
+        free_parameter_count=N_FREE_PARAMETERS,
     )
 
 
@@ -82,15 +83,8 @@ def _expected_entropy(components: _FixedComponents) -> float:
     return float(-(responsibilities * np.log(responsibilities)).sum())
 
 
-N_FREE_PARAMETERS: int = N_COMPONENTS * (N_FEATURES + 1) - 1
-
-
 def test_fixed_components_satisfy_protocol(components: _FixedComponents) -> None:
     assert isinstance(components, SphericalMixtureComponents)
-
-
-def test_count_free_parameters(components: _FixedComponents) -> None:
-    assert _count_free_parameters(components) == N_FREE_PARAMETERS
 
 
 def test_responsibilities(X: NDArray[np.float64], components: _FixedComponents) -> None:
@@ -115,6 +109,7 @@ def test_log_likelihoods_are_stable_for_very_negative_log_joint(
         weights=np.full(2, 0.5),
         means=np.eye(N_FEATURES)[:2],
         log_joint=np.full((N_SAMPLES, 2), -1e4),
+        free_parameter_count=N_FREE_PARAMETERS,
     )
 
     assert_allclose(compute_log_likelihoods(X, components), -1e4 + np.log(2.0))

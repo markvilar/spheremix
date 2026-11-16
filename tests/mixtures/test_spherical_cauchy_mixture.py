@@ -135,6 +135,7 @@ def test_components_count_and_dimension(
 ) -> None:
     assert components.component_count == N_COMPONENTS
     assert components.dimension == N_FEATURES
+    assert components.free_parameter_count == N_COMPONENTS * (N_FEATURES + 1) - 1
 
 
 def test_log_joint_densities_use_logpdf(

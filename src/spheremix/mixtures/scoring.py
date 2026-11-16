@@ -71,7 +71,7 @@ def compute_aic(
     -2 log L + 2 p, with p the number of free parameters.
     """
     log_likelihood: float = float(compute_log_likelihoods(X, components).sum())
-    return -2.0 * log_likelihood + 2.0 * _count_free_parameters(components)
+    return -2.0 * log_likelihood + 2.0 * components.free_parameter_count
 
 
 def compute_bic(
@@ -93,7 +93,7 @@ def compute_bic(
     -2 log L + p log N, with p the number of free parameters.
     """
     log_likelihood: float = float(compute_log_likelihoods(X, components).sum())
-    penalty: float = _count_free_parameters(components) * float(np.log(X.shape[0]))
+    penalty: float = components.free_parameter_count * float(np.log(X.shape[0]))
     return -2.0 * log_likelihood + penalty
 
 
@@ -164,17 +164,7 @@ def compute_dic(
     """
     log_likelihood: float = float(compute_log_likelihoods(X, components).sum())
     entropy: float = _classification_entropy(compute_responsibilities(X, components))
-    return (
-        -2.0 * log_likelihood + 2.0 * entropy + 2.0 * _count_free_parameters(components)
-    )
-
-
-def _count_free_parameters(components: SphericalMixtureComponents) -> int:
-    """
-    Count the free parameters: K weights summing to 1, and a mean and a
-    concentration per component, K * (D + 1) - 1.
-    """
-    return components.component_count * (components.dimension + 1) - 1
+    return -2.0 * log_likelihood + 2.0 * entropy + 2.0 * components.free_parameter_count
 
 
 def _classification_entropy(responsibilities: np.ndarray) -> float:
