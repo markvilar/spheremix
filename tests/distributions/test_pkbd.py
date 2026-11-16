@@ -6,6 +6,10 @@ import numpy as np
 import pytest
 
 from numpy.testing import assert_allclose
+from scipy.integrate import quad
+from scipy.optimize import minimize_scalar
+from scipy.special import gammaln
+
 from spheremix.distributions import (
     PKBDistribution,
     pkbd_logkernel,
@@ -477,3 +481,51 @@ class TestPKBDistribution:
         X: np.ndarray = random_sphere_samples(30, 3, self.rng)
         shift: np.ndarray = self.dist.logpdf(X) - self.dist.logkernel(X)
         assert_allclose(shift, shift[0], atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Normalisation (#85)
+# ---------------------------------------------------------------------------
+
+
+def _integrate_over_sphere(d: int, rho: float) -> float:
+    """
+    Integrate exp(pkbd_logpdf) over the sphere in R^d, reduced to an integral
+    over t = mu^T x weighted by the area of the (d - 2)-sphere at height t.
+    """
+    mu: np.ndarray = np.eye(d)[0]
+    log_slice_area: float = (
+        np.log(2.0) + ((d - 1) / 2.0) * np.log(np.pi) - gammaln((d - 1) / 2.0)
+    )
+
+    def integrand(t: float) -> float:
+        x: np.ndarray = np.zeros((1, d))
+        x[0, 0] = t
+        x[0, 1] = np.sqrt(max(1.0 - t * t, 0.0))
+        log_density: float = float(pkbd_logpdf(x, mu, rho)[0])
+        return float(
+            np.exp(log_density + log_slice_area) * (1.0 - t * t) ** ((d - 3) / 2.0)
+        )
+
+    result: float = quad(integrand, -1.0, 1.0, limit=200)[0]
+    return result
+
+
+@pytest.mark.parametrize("d", [3, 5, 10])
+@pytest.mark.parametrize("rho", [0.0, 0.3, 0.8, 0.95])
+def test_pdf_integrates_to_one(d: int, rho: float) -> None:
+    assert _integrate_over_sphere(d, rho) == pytest.approx(1.0, rel=1e-6)
+
+
+@pytest.mark.parametrize("rho", [0.3, 0.7])
+def test_maximum_likelihood_rho_of_samples_matches(rho: float) -> None:
+    mu: np.ndarray = np.eye(3)[0]
+    X: np.ndarray = sample_pkbd(2_000, mu, rho, rng=make_rng())
+
+    result = minimize_scalar(
+        lambda value: -float(pkbd_logpdf(X, mu, value).sum()),
+        bounds=(0.0, 0.999),
+        method="bounded",
+    )
+
+    assert result.x == pytest.approx(rho, abs=0.03)

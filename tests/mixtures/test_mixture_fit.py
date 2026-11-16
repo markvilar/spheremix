@@ -47,7 +47,10 @@ MONOTONE_RTOL: float = 1e-8
 
 @dataclass(frozen=True, slots=True)
 class _RecordedFit:
-    """A seeded fit recorded from the per-module EM loops before #82."""
+    """
+    A seeded fit, recorded from the per-module EM loops before #82 and, for the
+    Poisson kernel, after the PKBD normalisation fix in #85.
+    """
 
     weights: list[float]
     means: list[list[float]]
@@ -55,6 +58,13 @@ class _RecordedFit:
     log_likelihood: float
     n_iter: int
     converged: bool
+    # L-BFGS-B stops anywhere within its gradient tolerance, so the parameters
+    # of its fits differ by up to about 1e-5 across machines. The log-likelihood
+    # is flat near the optimum and stays far closer. Only the closed-form vMF
+    # M-step is compared at round-off.
+    parameter_rtol: float = 1e-4
+    parameter_atol: float = 1e-4
+    log_likelihood_rtol: float = 1e-6
 
 
 # (mixture type, params type, recorded fit)
@@ -78,15 +88,15 @@ REGRESSION_CASES: list[tuple[type, type, _RecordedFit]] = [
         PoissonKernelMixture,
         PoissonKernelMixtureParams,
         _RecordedFit(
-            weights=[0.5704796772058918, 0.42952032279410823],
+            weights=[0.5777646912425346, 0.42223530875746546],
             means=[
-                [-0.08285093117715168, 0.0435266138084317, 0.9956109466520797],
-                [0.9924153331936187, -0.11791146422910004, 0.03476626303686579],
+                [-0.07464156584888919, 0.04940062942950491, 0.9959860513378662],
+                [0.9937102309060932, -0.10377238562017205, 0.042086446455562386],
             ],
-            concentrations=[0.7796159419737405, 0.7918438256997875],
-            log_likelihood=-51.43368160884342,
-            n_iter=8,
-            converged=True,
+            concentrations=[0.7225400626604768, 0.7384614445826527],
+            log_likelihood=-96.86895247277357,
+            n_iter=10,
+            converged=False,
         ),
     ),
     (
@@ -117,6 +127,9 @@ REGRESSION_CASES: list[tuple[type, type, _RecordedFit]] = [
             log_likelihood=-85.71095380014707,
             n_iter=10,
             converged=False,
+            parameter_rtol=1e-10,
+            parameter_atol=0.0,
+            log_likelihood_rtol=1e-10,
         ),
     ),
 ]
@@ -131,15 +144,12 @@ RECOVERY_CASES: list[object] = [
         (0.7, 0.8),
         0.1,
     ),
-    pytest.param(
+    (
         PoissonKernelMixture,
         PoissonKernelMixtureParams,
         sample_pkbd,
         (0.7, 0.8),
         0.1,
-        marks=pytest.mark.xfail(
-            reason="pkbd_logpdf does not normalise (#85)", strict=True
-        ),
     ),
     (
         PowerSphericalMixture,
@@ -182,13 +192,23 @@ def test_fit_matches_recorded_fit(
 
     assert fitted.state.components is not None
     assert convergence is not None
-    assert_allclose(fitted.state.components.weights, recorded.weights, rtol=1e-10)
-    assert_allclose(fitted.state.components.means, recorded.means, rtol=1e-10)
-    assert_allclose(
-        fitted.state.components.concentrations, recorded.concentrations, rtol=1e-10
-    )
+    pairs: list[tuple[NDArray[np.float64], NDArray[np.float64]]] = [
+        (fitted.state.components.weights, np.array(recorded.weights)),
+        (fitted.state.components.means, np.array(recorded.means)),
+        (
+            fitted.state.components.concentrations,
+            np.array(recorded.concentrations),
+        ),
+    ]
+    for fitted_values, recorded_values in pairs:
+        assert_allclose(
+            fitted_values,
+            recorded_values,
+            rtol=recorded.parameter_rtol,
+            atol=recorded.parameter_atol,
+        )
     assert convergence.log_likelihood == pytest.approx(
-        recorded.log_likelihood, rel=1e-10
+        recorded.log_likelihood, rel=recorded.log_likelihood_rtol
     )
     assert convergence.n_iter == recorded.n_iter
     assert convergence.converged is recorded.converged
