@@ -15,6 +15,7 @@ from spheremix.distributions import power_spherical_logpdf
 from .convergence import SphericalMixtureConvergence
 from .em_fitter import fit_mixture_em
 from .initializer import MeanInitStrategy, create_mean_initializer
+from .progress import FitProgressCallback
 from .scoring import (
     compute_aic,
     compute_bic,
@@ -212,7 +213,12 @@ class PowerSphericalMixture:
         """Whether the mixture is fitted."""
         return self._state.is_fitted
 
-    def fit(self, X: np.ndarray) -> Self:
+    def fit(
+        self,
+        X: np.ndarray,
+        *,
+        progress_callback: FitProgressCallback | None = None,
+    ) -> Self:
         """
         Fit the mixture to data with EM.
 
@@ -220,12 +226,16 @@ class PowerSphericalMixture:
         ---------
         X:
             Unit vectors, shape (N, D).
+        progress_callback:
+            Called with a FitProgress after each EM iteration, if given.
 
         Returns
         -------
         A new fitted mixture with the same params.
         """
-        components, convergence = fit_power_spherical_mixture(X, self.params)
+        components, convergence = fit_power_spherical_mixture(
+            X, self.params, progress_callback=progress_callback
+        )
         return type(self).from_state(
             PowerSphericalMixtureState(
                 params=self.params, components=components, convergence=convergence
@@ -277,6 +287,8 @@ class PowerSphericalMixture:
 def fit_power_spherical_mixture(
     X: np.ndarray,
     params: PowerSphericalMixtureParams,
+    *,
+    progress_callback: FitProgressCallback | None = None,
 ) -> tuple[PowerSphericalMixtureComponents, SphericalMixtureConvergence]:
     """
     Fit a Power Spherical mixture to data with EM.
@@ -287,6 +299,8 @@ def fit_power_spherical_mixture(
         Unit vectors, shape (N, D).
     params:
         Settings of the fit.
+    progress_callback:
+        Called with a FitProgress after each EM iteration, if given.
 
     Returns
     -------
@@ -306,7 +320,13 @@ def fit_power_spherical_mixture(
             concentrations=np.full(K, 1.0),
         )
     )
-    return fit_mixture_em(X, initial_components, _maximization_step, params)
+    return fit_mixture_em(
+        X,
+        initial_components,
+        _maximization_step,
+        params,
+        progress_callback=progress_callback,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from typing import Protocol, runtime_checkable
 from loguru import logger
 
 from .convergence import SphericalMixtureConvergence
+from .progress import FitProgress, FitProgressCallback
 from .protocols import SphericalMixtureComponents
 from .scoring import compute_log_likelihoods, compute_responsibilities
 
@@ -62,6 +63,7 @@ def fit_mixture_em[C: SphericalMixtureComponents](
     settings: EMSettings,
     *,
     expectation: ExpectationStep[C] = compute_responsibilities,
+    progress_callback: FitProgressCallback | None = None,
 ) -> tuple[C, SphericalMixtureConvergence]:
     """
     Fit mixture components to data with expectation-maximisation.
@@ -80,6 +82,9 @@ def fit_mixture_em[C: SphericalMixtureComponents](
     expectation:
         E-step: given X and the components, return responsibilities of
         shape (N, K).
+    progress_callback:
+        Called with a FitProgress after each iteration, if given. An exception
+        it raises ends the fit.
 
     Returns
     -------
@@ -104,23 +109,36 @@ def fit_mixture_em[C: SphericalMixtureComponents](
         # 3. M-step: update the components.
         components = maximization(X, responsibilities, components)
 
-        # 4. Compute the log-likelihood of the updated components.
+        # 4. Compute the log-likelihood and its change, and check convergence.
         previous_log_likelihood: float = log_likelihood
         log_likelihood = float(compute_log_likelihoods(X, components).sum())
         if settings.verbose:
             logger.info(f"Iter {iteration:03d} – loglik = {log_likelihood:.5f}")
-
-        # 5. Stop when the change falls within either tolerance.
+        change: float = abs(log_likelihood - previous_log_likelihood)
         n_iter = iteration + 1
         converged = _has_converged(
-            log_likelihood, previous_log_likelihood, settings.tol, settings.rtol
+            change, previous_log_likelihood, settings.tol, settings.rtol
         )
+
+        # 5. Report the progress to the callback, if given.
+        if progress_callback is not None:
+            progress_callback(
+                FitProgress(
+                    n_iter=n_iter,
+                    max_iter=settings.max_iter,
+                    log_likelihood=log_likelihood,
+                    log_likelihood_change=change,
+                    converged=converged,
+                )
+            )
+
+        # 6. Stop if converged.
         if converged:
             if settings.verbose:
                 logger.info("Converged!")
             break
 
-    # 6. Return the components and how EM converged to them.
+    # 7. Return the components and how EM converged to them.
     convergence: SphericalMixtureConvergence = SphericalMixtureConvergence(
         log_likelihood=log_likelihood,
         n_iter=n_iter,
@@ -130,15 +148,14 @@ def fit_mixture_em[C: SphericalMixtureComponents](
 
 
 def _has_converged(
-    log_likelihood: float,
+    change: float,
     previous_log_likelihood: float,
     tol: float,
     rtol: float,
 ) -> bool:
     """
-    Return whether the change in log-likelihood is below the absolute tolerance,
-    or below the relative tolerance times max(|previous|, 1).
+    Return whether the absolute change in log-likelihood is below the absolute
+    tolerance, or below the relative tolerance times max(|previous|, 1).
     """
-    change: float = abs(log_likelihood - previous_log_likelihood)
     scale: float = max(abs(previous_log_likelihood), 1.0)
     return change < tol or change < rtol * scale

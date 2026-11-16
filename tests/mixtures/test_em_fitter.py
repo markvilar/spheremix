@@ -8,16 +8,22 @@ import numpy as np
 import pytest
 
 from dataclasses import dataclass
+from typing import Any
 
 from numpy.typing import NDArray
 
 from spheremix.mixtures import (
     EMSettings,
+    FitProgress,
+    PoissonKernelMixture,
     PoissonKernelMixtureParams,
+    PowerSphericalMixture,
     PowerSphericalMixtureParams,
+    SphericalCauchyMixture,
     SphericalCauchyMixtureParams,
     SphericalMixtureComponents,
     SphericalMixtureConvergence,
+    VonMisesFisherMixture,
     VonMisesFisherMixtureParams,
     compute_log_likelihoods,
     fit_mixture_em,
@@ -177,3 +183,137 @@ def test_mixture_params_satisfy_settings(params_type: type) -> None:
 
 def test_stub_components_satisfy_protocol(components: _StubComponents) -> None:
     assert isinstance(components, SphericalMixtureComponents)
+
+
+# ---------------------------------------------------------------------------
+# Progress callback
+# ---------------------------------------------------------------------------
+
+MIXTURE_TYPES: list[tuple[type, type]] = [
+    (SphericalCauchyMixture, SphericalCauchyMixtureParams),
+    (PoissonKernelMixture, PoissonKernelMixtureParams),
+    (PowerSphericalMixture, PowerSphericalMixtureParams),
+    (VonMisesFisherMixture, VonMisesFisherMixtureParams),
+]
+
+
+class _CallbackError(Exception):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("steps", "settings"),
+    [([1.0, 0.0], _Settings(tol=1e-3)), ([1.0], _Settings())],
+    ids=["converged", "max_iter"],
+)
+def test_progress_reports_each_iteration(
+    X: NDArray[np.float64],
+    components: _StubComponents,
+    steps: list[float],
+    settings: _Settings,
+) -> None:
+    events: list[FitProgress] = []
+
+    _, convergence = fit_mixture_em(
+        X,
+        components,
+        _RecordingMStep(steps, []),
+        settings,
+        progress_callback=events.append,
+    )
+
+    assert [event.n_iter for event in events] == list(range(1, convergence.n_iter + 1))
+    assert all(event.max_iter == settings.max_iter for event in events)
+    assert all(event.converged is False for event in events[:-1])
+    assert events[-1].n_iter == convergence.n_iter
+    assert events[-1].log_likelihood == convergence.log_likelihood
+    assert events[-1].converged is convergence.converged
+
+
+def test_progress_reports_log_likelihood_change(
+    X: NDArray[np.float64], components: _StubComponents
+) -> None:
+    events: list[FitProgress] = []
+
+    fit_mixture_em(
+        X,
+        components,
+        _RecordingMStep([1.0, 2.0, 0.5], []),
+        _Settings(max_iter=4),
+        progress_callback=events.append,
+    )
+
+    log_likelihoods: NDArray[np.float64] = np.array(
+        [event.log_likelihood for event in events]
+    )
+    changes: NDArray[np.float64] = np.array(
+        [event.log_likelihood_change for event in events]
+    )
+    assert np.isinf(changes[0])
+    np.testing.assert_allclose(changes[1:], np.abs(np.diff(log_likelihoods)))
+
+
+def test_progress_callback_exception_ends_fit(
+    X: NDArray[np.float64], components: _StubComponents
+) -> None:
+    calls: list[str] = []
+    error: _CallbackError = _CallbackError("stop")
+
+    def on_progress(event: FitProgress) -> None:
+        if event.n_iter == 2:
+            raise error
+
+    with pytest.raises(_CallbackError) as raised:
+        fit_mixture_em(
+            X,
+            components,
+            _RecordingMStep([1.0], calls),
+            _Settings(),
+            progress_callback=on_progress,
+        )
+
+    assert raised.value is error
+    assert calls.count("M") == 2
+
+
+def test_progress_callback_leaves_result_unchanged(
+    X: NDArray[np.float64], components: _StubComponents
+) -> None:
+    without: tuple[Any, SphericalMixtureConvergence] = fit_mixture_em(
+        X, components, _RecordingMStep([1.0], []), _Settings()
+    )
+    with_callback: tuple[Any, SphericalMixtureConvergence] = fit_mixture_em(
+        X,
+        components,
+        _RecordingMStep([1.0], []),
+        _Settings(),
+        progress_callback=lambda event: None,
+    )
+
+    assert with_callback == without
+
+
+@pytest.mark.parametrize(
+    ("mixture_type", "params_type"),
+    MIXTURE_TYPES,
+    ids=[mixture_type.__name__ for mixture_type, _ in MIXTURE_TYPES],
+)
+def test_mixture_fit_reports_progress(
+    mixture_type: type,
+    params_type: type,
+) -> None:
+    points: NDArray[np.float64] = np.random.default_rng(0).standard_normal((20, 3))
+    sphere_points: NDArray[np.float64] = points / np.linalg.norm(
+        points, axis=1, keepdims=True
+    )
+    events: list[FitProgress] = []
+
+    fitted: Any = mixture_type(params_type(n_components=2, max_iter=3, seed=0)).fit(
+        sphere_points, progress_callback=events.append
+    )
+    convergence: SphericalMixtureConvergence = fitted.state.convergence
+
+    assert [event.n_iter for event in events] == list(range(1, len(events) + 1))
+    assert events[-1].n_iter == convergence.n_iter
+    assert events[-1].log_likelihood == convergence.log_likelihood
+    assert events[-1].converged is convergence.converged
