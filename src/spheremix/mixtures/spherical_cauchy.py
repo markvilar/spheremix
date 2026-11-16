@@ -13,7 +13,7 @@ from typing import Literal, Self
 from spheremix.distributions import spherical_cauchy_logpdf
 
 from .convergence import SphericalMixtureConvergence
-from .em_fitter import fit_mixture_em
+from .em_fitter import FitProgressCallback, fit_mixture_em
 from .initializer import MeanInitStrategy, create_mean_initializer
 from .scoring import (
     compute_aic,
@@ -212,7 +212,12 @@ class SphericalCauchyMixture:
         """Whether the mixture is fitted."""
         return self._state.is_fitted
 
-    def fit(self, X: np.ndarray) -> Self:
+    def fit(
+        self,
+        X: np.ndarray,
+        *,
+        progress_callback: FitProgressCallback | None = None,
+    ) -> Self:
         """
         Fit the mixture to data with EM.
 
@@ -220,12 +225,16 @@ class SphericalCauchyMixture:
         ---------
         X:
             Unit vectors, shape (N, D).
+        progress_callback:
+            Called with a FitProgress after each EM iteration, if given.
 
         Returns
         -------
         A new fitted mixture with the same params.
         """
-        components, convergence = fit_spherical_cauchy_mixture(X, self.params)
+        components, convergence = fit_spherical_cauchy_mixture(
+            X, self.params, progress_callback=progress_callback
+        )
         return type(self).from_state(
             SphericalCauchyMixtureState(
                 params=self.params, components=components, convergence=convergence
@@ -277,6 +286,8 @@ class SphericalCauchyMixture:
 def fit_spherical_cauchy_mixture(
     X: np.ndarray,
     params: SphericalCauchyMixtureParams,
+    *,
+    progress_callback: FitProgressCallback | None = None,
 ) -> tuple[SphericalCauchyMixtureComponents, SphericalMixtureConvergence]:
     """
     Fit a Spherical Cauchy mixture to data with EM.
@@ -287,6 +298,8 @@ def fit_spherical_cauchy_mixture(
         Unit vectors, shape (N, D).
     params:
         Settings of the fit.
+    progress_callback:
+        Called with a FitProgress after each EM iteration, if given.
 
     Returns
     -------
@@ -306,7 +319,13 @@ def fit_spherical_cauchy_mixture(
             concentrations=np.full(K, 0.1),
         )
     )
-    return fit_mixture_em(X, initial_components, _maximization_step, params)
+    return fit_mixture_em(
+        X,
+        initial_components,
+        _maximization_step,
+        params,
+        progress_callback=progress_callback,
+    )
 
 
 # ---------------------------------------------------------------------------

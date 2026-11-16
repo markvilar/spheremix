@@ -4,9 +4,13 @@ Module for the protocols of spherical mixtures and their state.
 
 import numpy as np
 
-from typing import Protocol, Self, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 from .convergence import SphericalMixtureConvergence
+
+if TYPE_CHECKING:
+    # em_fitter imports this module, so import the alias for type checking only.
+    from .em_fitter import FitProgressCallback
 
 
 @runtime_checkable
@@ -157,8 +161,16 @@ class SphericalMixture[
     @property
     def is_fitted(self) -> bool: ...
 
-    def fit(self, X: np.ndarray) -> Self:
-        """Return a new mixture fitted to unit vectors X, shape (N, D)."""
+    def fit(
+        self,
+        X: np.ndarray,
+        *,
+        progress_callback: "FitProgressCallback | None" = None,
+    ) -> Self:
+        """
+        Return a new mixture fitted to unit vectors X, shape (N, D), calling
+        progress_callback after each EM iteration if given.
+        """
         ...
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
