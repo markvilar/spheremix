@@ -251,7 +251,7 @@ def pkbd_logkernel(
     denominator: np.ndarray = 1 + rho**2 - 2.0 * rho * dot
 
     log_numerator: float = np.log(numerator)
-    log_denominator: np.ndarray = ((dim + 1.0) / 2.0) * np.log(denominator)
+    log_denominator: np.ndarray = (dim / 2.0) * np.log(denominator)
 
     return log_numerator - log_denominator
 
