@@ -147,7 +147,10 @@ def test_vmf_estep_is_finite_at_high_dimension() -> None:
                 log_normalizer_method=VmfLogNormalizerMethod.AMOS_UPPER,
             ),
             convergence=SphericalMixtureConvergence(
-                log_likelihood=0.0, n_iter=1, converged=True
+                log_likelihood=0.0,
+                n_iter=1,
+                converged=True,
+                log_likelihood_history=(0.0,),
             ),
         )
     )
