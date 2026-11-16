@@ -11,7 +11,7 @@ from typing import Any
 from numpy.testing import assert_allclose
 from numpy.typing import NDArray
 
-from spheremix.distributions import pkbd_logpdf
+from spheremix.distributions import poisson_kernel_logpdf
 from spheremix.mixtures import (
     PoissonKernelMixture,
     PoissonKernelMixtureComponents,
@@ -145,7 +145,7 @@ def test_log_joint_densities_use_logpdf(
     expected: NDArray[np.float64] = np.stack(
         [
             np.log(components.weights[k])
-            + pkbd_logpdf(X, components.means[k], CONCENTRATIONS[k])
+            + poisson_kernel_logpdf(X, components.means[k], CONCENTRATIONS[k])
             for k in range(N_COMPONENTS)
         ],
         axis=1,

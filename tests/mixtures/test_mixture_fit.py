@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from spheremix.distributions import (
-    sample_pkbd,
+    sample_poisson_kernel,
     sample_power_spherical,
     sample_spherical_cauchy,
 )
@@ -147,7 +147,7 @@ RECOVERY_CASES: list[object] = [
     (
         PoissonKernelMixture,
         PoissonKernelMixtureParams,
-        sample_pkbd,
+        sample_poisson_kernel,
         (0.7, 0.8),
         0.1,
     ),

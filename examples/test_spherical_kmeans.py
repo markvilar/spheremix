@@ -5,7 +5,7 @@ Example script to showcase Spherical K-means.
 import numpy as np
 
 from loguru import logger
-from spheremix.distributions import PKBDistribution
+from spheremix.distributions import PoissonKernelDistribution
 from spheremix.cluster import SphericalKMeans
 from spheremix.utils.generators import orthogonal_sphere_modes
 
@@ -21,8 +21,8 @@ def run_spherical_kmeans() -> np.ndarray:
     means: np.ndarray = orthogonal_sphere_modes(n=N_CLUSTERS, d=N_FEATURES)
 
     # Create multiple PKB distributions
-    distributions: list[PKBDistribution] = [
-        PKBDistribution(mu=mean, rho=RHO) for mean in means
+    distributions: list[PoissonKernelDistribution] = [
+        PoissonKernelDistribution(mu=mean, rho=RHO) for mean in means
     ]
 
     # Generate samples from each of the distributions

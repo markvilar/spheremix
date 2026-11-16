@@ -21,7 +21,7 @@ from scipy.special import gammaln
 
 
 @dataclass(slots=True, frozen=True)
-class PKBDistribution:
+class PoissonKernelDistribution:
     """
     Poisson kernel–based distribution on the unit sphere.
 
@@ -49,7 +49,7 @@ class PKBDistribution:
         -------
         samples: ndarray of shape (n_samples, n_features)
         """
-        return sample_pkbd(
+        return sample_poisson_kernel(
             n_samples=n_samples,
             mu=self.mu,
             rho=self.rho,
@@ -68,7 +68,7 @@ class PKBDistribution:
         -------
         logkernel : ndarray of shape (n_samples,)
         """
-        return pkbd_logkernel(X=X, mu=self.mu, rho=self.rho)
+        return poisson_kernel_logkernel(X=X, mu=self.mu, rho=self.rho)
 
     def logpdf(self, X: np.ndarray) -> np.ndarray:
         """
@@ -83,10 +83,10 @@ class PKBDistribution:
         -------
         logpdf : ndarray of shape (n_samples,)
         """
-        return pkbd_logpdf(X=X, mu=self.mu, rho=self.rho)
+        return poisson_kernel_logpdf(X=X, mu=self.mu, rho=self.rho)
 
 
-def sample_pkbd(
+def sample_poisson_kernel(
     n_samples: int,
     mu: np.ndarray,
     rho: float,
@@ -181,14 +181,14 @@ def sample_pkbd(
     return out
 
 
-def pkbd_log_normalizing_constant(dim: int) -> float:
+def poisson_kernel_log_normalizing_constant(dim: int) -> float:
     """Calculates the PKBD log normalizing constant."""
     numerator: float = gammaln(dim / 2.0)
     denominator: float = np.log(2.0) + (dim / 2.0) * np.log(np.pi)
     return numerator - denominator
 
 
-def pkbd_logkernel(
+def poisson_kernel_logkernel(
     X: np.ndarray,
     mu: np.ndarray,
     rho: float,
@@ -256,7 +256,7 @@ def pkbd_logkernel(
     return log_numerator - log_denominator
 
 
-def pkbd_logpdf(
+def poisson_kernel_logpdf(
     X: np.ndarray,
     mu: np.ndarray,
     rho: float,
@@ -313,8 +313,8 @@ def pkbd_logpdf(
         mu = mu / max(mu_norm, eps)
 
     dim: int = X.shape[1]
-    log_constant: float = pkbd_log_normalizing_constant(dim)
-    logkernel: np.ndarray = pkbd_logkernel(
+    log_constant: float = poisson_kernel_log_normalizing_constant(dim)
+    logkernel: np.ndarray = poisson_kernel_logkernel(
         X=X,
         mu=mu,
         rho=rho,
@@ -324,7 +324,7 @@ def pkbd_logpdf(
     return log_constant + logkernel
 
 
-def pkbd_pdf(
+def poisson_kernel_pdf(
     X: np.ndarray,
     mu: np.ndarray,
     rho: float,
@@ -354,7 +354,7 @@ def pkbd_pdf(
         Density value for each row of X.
     """
 
-    log_pdf: np.ndarray = pkbd_logpdf(
+    log_pdf: np.ndarray = poisson_kernel_logpdf(
         X=X,
         mu=mu,
         rho=rho,
