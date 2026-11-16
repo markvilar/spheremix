@@ -38,7 +38,7 @@ uv run pytest tests/path/to/test.py::test_function_name     # single test
 
 | Module | Purpose |
 |---|---|
-| `distributions/` | Probability distributions on unit spheres — `SphericalCauchyDistribution` (location `mu`, concentration `rho`), `PKBDistribution` (Projected Kent-Bingham) |
+| `distributions/` | Probability distributions on unit spheres — `SphericalCauchyDistribution` (location `mu`, concentration `rho`), `PoissonKernelDistribution` (Poisson kernel-based distribution, PKBD) |
 | `mixtures/` | Mixture models — `SphericalCauchyMixture` with EM algorithm support, tracking component weights, means, and concentrations |
 | `cluster/` | `SphericalKMeans` — scikit-learn-compatible K-means for spherical data (Dhillon & Modha 2001) |
 | `algorithm/` | Core algorithm skeletons — `mixture_em.py` (EM for mixture models, not yet fully implemented) |
@@ -193,7 +193,7 @@ from typing import Sequence
 
 from numpy.typing import NDArray
 
-from spheremix.distributions import PKBDistribution, SphericalCauchyDistribution
+from spheremix.distributions import PoissonKernelDistribution, SphericalCauchyDistribution
 from spheremix.mixtures import SphericalCauchyMixture
 ```
 
@@ -203,7 +203,7 @@ When importing multiple names from the same package or module, use parentheses w
 
 ```python
 from spheremix.distributions import (
-    PKBDistribution,
+    PoissonKernelDistribution,
     SphericalCauchyDistribution,
 )
 ```
