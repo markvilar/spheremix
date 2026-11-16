@@ -8,68 +8,35 @@ not signatures — these tests catch accidental method removals.
 import numpy as np
 import pytest
 
-from spheremix import SphericalClusterer, SphericalMixtureModel
+from spheremix import SphericalClusterer, SphericalMixture
 from spheremix.cluster import SphericalKMeans
-from spheremix.mixtures import SphericalCauchyMixture
-from spheremix.mixtures import PowerSphericalMixture
-from spheremix.mixtures import VonMisesFisherMixture
-from spheremix.mixtures import PKBMixture
+from spheremix.mixtures import (
+    PoissonKernelMixture,
+    PoissonKernelMixtureParams,
+    PowerSphericalMixture,
+    PowerSphericalMixtureParams,
+    SphericalCauchyMixture,
+    SphericalCauchyMixtureParams,
+    VonMisesFisherMixture,
+    VonMisesFisherMixtureParams,
+)
 
 
 # ---------------------------------------------------------------------------
-# SphericalMixtureModel
+# SphericalMixture
 # ---------------------------------------------------------------------------
 
-_MIXTURE_MODEL_METHODS = [
-    "fit",
-    "is_fitted",
-    "predict",
-    "predict_proba",
-    "fit_predict",
-    "score",
-    "score_samples",
-    "aic",
-    "bic",
-    "icl",
-    "bici",
-    "dic",
+MIXTURES: list[object] = [
+    SphericalCauchyMixture(SphericalCauchyMixtureParams(n_components=2)),
+    PoissonKernelMixture(PoissonKernelMixtureParams(n_components=2)),
+    PowerSphericalMixture(PowerSphericalMixtureParams(n_components=2)),
+    VonMisesFisherMixture(VonMisesFisherMixtureParams(n_components=2)),
 ]
 
 
-def test_spherical_cauchy_mixture_satisfies_mixture_model() -> None:
-    assert isinstance(SphericalCauchyMixture(n_components=2), SphericalMixtureModel)
-
-
-@pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
-def test_spherical_cauchy_mixture_has_method(method: str) -> None:
-    assert hasattr(SphericalCauchyMixture(n_components=2), method)
-
-
-def test_power_spherical_mixture_satisfies_mixture_model() -> None:
-    assert isinstance(PowerSphericalMixture(n_components=2), SphericalMixtureModel)
-
-
-@pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
-def test_power_spherical_mixture_has_method(method: str) -> None:
-    assert hasattr(PowerSphericalMixture(n_components=2), method)
-
-
-def test_von_mises_fisher_mixture_satisfies_mixture_model() -> None:
-    assert isinstance(VonMisesFisherMixture(n_components=2), SphericalMixtureModel)
-
-
-@pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
-def test_von_mises_fisher_mixture_has_method(method: str) -> None:
-    assert hasattr(VonMisesFisherMixture(n_components=2), method)
-
-
-def test_pkb_mixture_satisfies_mixture_model() -> None:
-    assert isinstance(PKBMixture(n_components=2), SphericalMixtureModel)
-
-
-@pytest.mark.parametrize("method", _MIXTURE_MODEL_METHODS)
-def test_pkb_mixture_has_method(method: str) -> None:
-    assert hasattr(PKBMixture(n_components=2), method)
+@pytest.mark.parametrize("mixture", MIXTURES)
+def test_mixture_satisfies_spherical_mixture(mixture: object) -> None:
+    assert isinstance(mixture, SphericalMixture)
 
 
 # ---------------------------------------------------------------------------

@@ -14,8 +14,11 @@ from spheremix.distributions import (
     sample_von_mises_fisher,
     von_mises_fisher_log_normalizing_constant,
 )
-from spheremix.mixtures import VonMisesFisherMixture
-from spheremix.mixtures.initializer import _kmeans_mean_initializer
+from spheremix.mixtures import (
+    VonMisesFisherMixture,
+    VonMisesFisherMixtureComponents,
+    VonMisesFisherMixtureParams,
+)
 from spheremix.mixtures.von_mises_fisher import (
     _bessel_ratio,
     _solve_concentration,
@@ -60,12 +63,19 @@ def _fit(
     data: NDArray[np.float64],
     method: VmfLogNormalizerMethod,
 ) -> VonMisesFisherMixture:
-    model: VonMisesFisherMixture = VonMisesFisherMixture(
-        n_components=2, max_iter=30, log_normalizer_method=method
+    params: VonMisesFisherMixtureParams = VonMisesFisherMixtureParams(
+        n_components=2,
+        init="kmeans",
+        max_iter=30,
+        log_normalizer_method=method,
+        seed=0,
     )
-    # A seeded K-means start; the seed setting arrives with #67.
-    model.init = _kmeans_mean_initializer(rng=np.random.default_rng(0))  # type: ignore[assignment]
-    return model.fit(data)
+    return VonMisesFisherMixture(params).fit(data)
+
+
+def _components(model: VonMisesFisherMixture) -> VonMisesFisherMixtureComponents:
+    assert model.state.components is not None
+    return model.state.components
 
 
 @pytest.mark.parametrize("method", list(VmfLogNormalizerMethod))
@@ -76,7 +86,7 @@ def test_fit_recovers_parameters(method: VmfLogNormalizerMethod, dim: int) -> No
 
     model: VonMisesFisherMixture = _fit(data, method)
 
-    params = model.get_params()
+    params = _components(model)
     order: NDArray[np.intp] = np.argmax(params.means @ true_means.T, axis=0)
     assert np.all(np.sum(params.means[order] * true_means, axis=1) > 0.99)
     np.testing.assert_allclose(params.weights[order], TRUE_WEIGHTS, atol=0.05)
@@ -93,10 +103,11 @@ def test_fit_high_dimension_default() -> None:
         warnings.simplefilter("error")
         model: VonMisesFisherMixture = _fit(data, VmfLogNormalizerMethod.AMOS_UPPER)
 
-    params = model.get_params()
+    params = _components(model)
     assert np.all(np.isfinite(params.means))
     assert np.all(np.isfinite(params.concentrations))
-    assert np.isfinite(model.log_likelihood_)
+    assert model.state.convergence is not None
+    assert np.isfinite(model.state.convergence.log_likelihood)
 
 
 @pytest.mark.parametrize(("dim", "r_bar", "expected"), EXACT_REFERENCE)

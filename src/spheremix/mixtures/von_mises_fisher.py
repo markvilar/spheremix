@@ -1,96 +1,59 @@
 """
-Module for von Mises-Fisher (vMF) mixture model.
+Module for the von Mises-Fisher mixture model.
 """
 
 import numpy as np
 import scipy.optimize
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import ClassVar, Literal, Self
+from dataclasses import dataclass
+from typing import Literal, Self
+
 from loguru import logger
-from spheremix.distributions import VmfLogNormalizerMethod
-from spheremix.distributions import von_mises_fisher_logpdf
-from .base import SerializableMixin, _classification_entropy
+
+from spheremix.distributions import (
+    VmfLogNormalizerMethod,
+    von_mises_fisher_logpdf,
+)
+
+from .convergence import SphericalMixtureConvergence
 from .initializer import MeanInitStrategy, create_mean_initializer
-
-
-# ---------------------------------------------------------------------------
-# Mixture components — fitted parameters, replaced atomically on each fit
-# ---------------------------------------------------------------------------
+from .scoring import (
+    compute_aic,
+    compute_bic,
+    compute_bici,
+    compute_dic,
+    compute_icl,
+    compute_log_likelihoods,
+    compute_responsibilities,
+)
 
 
 @dataclass(slots=True, frozen=True)
 class VonMisesFisherMixtureParams:
     """
-    Fitted parameters for a von Mises-Fisher mixture model.
-
-    Attributes
-    ----------
-    weights:
-        Mixing weights, shape (K,), sums to 1.
-    means:
-        Component means (unit vectors), shape (K, D).
-    concentrations:
-        Concentration parameters kappa, shape (K,), values >= 0.
-    """
-
-    weights: np.ndarray
-    means: np.ndarray
-    concentrations: np.ndarray
-
-    def to_dict(self) -> dict:
-        """Serialize to a JSON-compatible dict with nested Python lists."""
-        return {
-            "weights": self.weights.tolist(),
-            "means": self.means.tolist(),
-            "concentrations": self.concentrations.tolist(),
-        }
-
-
-# ---------------------------------------------------------------------------
-# Mixture model — facade; delegates EM to fit_von_mises_fisher_mixture()
-# ---------------------------------------------------------------------------
-
-
-@dataclass(slots=True)
-class VonMisesFisherMixture(SerializableMixin):
-    """
-    Mixture model of von Mises-Fisher distributions.
-
-    Fit via EM by calling ``fit()``. The learned parameters are stored
-    atomically in ``params_`` and replaced in full on each re-fit.
+    The settings of a von Mises-Fisher mixture fit.
 
     Attributes
     ----------
     n_components:
-        Number of mixture components.
+        Number of mixture components, K, at least one.
     init:
-        Mean initialization strategy.
+        How the component means are initialised.
     max_iter:
-        Maximum number of EM iterations.
+        Maximum number of EM iterations, at least one.
     tol:
-        Absolute log-likelihood convergence tolerance.
+        Absolute tolerance of the change in log-likelihood.
     rtol:
-        Relative log-likelihood convergence tolerance.
+        Relative tolerance of the change in log-likelihood.
     verbose:
-        Log EM iteration progress.
-    seed:
-        Seed for the mean initialiser; the same seed gives the same fit.
-        ``None`` draws a fresh unseeded generator on each fit.
+        Whether to log the log-likelihood of each iteration.
     log_normalizer_method:
-        Method for computing the log normalizing constant, used in the scoring
-        functions and in the M-step concentration update.
-        Defaults to AMOS_UPPER for numerical stability.
-    params_:
-        Fitted mixture components; ``None`` until ``fit()`` is called.
-    log_likelihood_:
-        Observed-data log-likelihood at the end of EM.
-    n_iter_:
-        Number of EM iterations performed.
+        Method of the log normalising constant, used in the densities and in
+        the M-step concentration update.
+    seed:
+        Seed of the mean initialiser, or None for a random seed.
     """
-
-    _SERIAL_VERSION: ClassVar[int] = 1
 
     n_components: int
     init: Literal["random", "kmeans"] = "random"
@@ -101,324 +64,298 @@ class VonMisesFisherMixture(SerializableMixin):
     log_normalizer_method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER
     seed: int | None = None
 
-    params_: VonMisesFisherMixtureParams | None = field(default=None, init=False)
-    log_likelihood_: float = field(default=-np.inf, init=False)
-    n_iter_: int = field(default=0, init=False)
+    def __post_init__(self) -> None:
+        if self.n_components < 1:
+            raise ValueError(
+                f"n_components must be at least 1, got {self.n_components}"
+            )
+        if self.max_iter < 1:
+            raise ValueError(f"max_iter must be at least 1, got {self.max_iter}")
 
-    def fit(self, X: np.ndarray, y: np.ndarray | None = None) -> Self:
-        """
-        Run EM until convergence or ``max_iter``.
-        Updates ``params_``, ``log_likelihood_``, and ``n_iter_``.
-        """
-        self.params_, self.log_likelihood_, self.n_iter_ = fit_von_mises_fisher_mixture(
-            X,
-            n_components=self.n_components,
-            init=self.init,
-            max_iter=self.max_iter,
-            tol=self.tol,
-            rtol=self.rtol,
-            verbose=self.verbose,
-            seed=self.seed,
-            log_normalizer_method=self.log_normalizer_method,
-        )
-        return self
 
-    def get_params(self) -> VonMisesFisherMixtureParams:
-        """
-        Return the fitted mixture components.
-        Raises ``ValueError`` if the model has not been fitted yet.
-        """
-        if self.params_ is None:
-            raise ValueError("Model is not fitted yet. Call fit() before get_params().")
-        return self.params_
+@dataclass(slots=True, frozen=True)
+class VonMisesFisherMixtureComponents:
+    """
+    The fitted components of a von Mises-Fisher mixture.
 
-    def is_fitted(self) -> bool:
-        """Return True if the model has been fitted, False otherwise."""
-        return self.params_ is not None
+    Attributes
+    ----------
+    weights:
+        Mixing weights, shape (K,), sums to 1.
+    means:
+        Component means (unit vectors), shape (K, D).
+    concentrations:
+        Concentration parameters kappa, shape (K,), values >= 0.
+    log_normalizer_method:
+        Method of the log normalising constant of the densities.
+    """
 
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        """
-        Compute posterior probabilities p(z=k | x_n, Θ) for each sample.
-        Returns an array of shape (N, K).
-        """
-        p = self.get_params()
-        return _compute_responsibilities(
-            X, p.weights, p.means, p.concentrations, self.log_normalizer_method
-        )
+    weights: np.ndarray
+    means: np.ndarray
+    concentrations: np.ndarray
+    log_normalizer_method: VmfLogNormalizerMethod
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        Assign each sample to the most probable component.
-        Returns an array of shape (N,) with integer component indices.
-        """
-        return self.predict_proba(X).argmax(axis=1)  # type: ignore[no-any-return]
+    @property
+    def component_count(self) -> int:
+        """Number of components, K."""
+        return int(self.means.shape[0])
 
-    def fit_predict(self, X: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
+    @property
+    def dimension(self) -> int:
+        """Dimension of the ambient space, D, of the unit vectors."""
+        return int(self.means.shape[1])
+
+    @property
+    def free_parameter_count(self) -> int:
         """
-        Fit the model and return hard component assignments.
-        Returns an array of shape (N,) with integer component indices.
+        Number of free parameters, K * (D + 1) - 1: K - 1 weights, and D - 1
+        for the unit mean and 1 for the concentration of each component.
         """
-        return self.fit(X).predict(X)
+        return self.component_count * (self.dimension + 1) - 1
 
-    def score_samples(self, X: np.ndarray) -> np.ndarray:
-        """Per-sample log p(x | Θ), shape (N,), from the normalised log-pdf."""
-        p = self.get_params()
-        return _compute_log_marginal_densities(
-            X, p.weights, p.means, p.concentrations, self.log_normalizer_method
-        )
-
-    def score(self, X: np.ndarray, y: np.ndarray | None = None) -> float:
+    def log_joint_densities(self, X: np.ndarray) -> np.ndarray:
         """
-        Mean per-sample log-likelihood of X under the fitted model.
+        Compute log w_k + log p(x_n | mu_k, kappa_k) of each sample and component.
 
-        Mirrors the sklearn ``score`` convention. Higher is better.
-        Requires the model to be fitted.
-
-        Parameters
-        ----------
+        Arguments
+        ---------
         X:
-            Unit-vector data, shape (N, D).
-        y:
-            Ignored. Present for sklearn API compatibility.
+            Unit vectors, shape (N, D).
 
         Returns
         -------
-        float
+        Log joint densities, shape (N, K).
         """
+        return _compute_log_joint_densities(
+            X,
+            self.weights,
+            self.means,
+            self.concentrations,
+            self.log_normalizer_method,
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class VonMisesFisherMixtureState:
+    """
+    The state of a von Mises-Fisher mixture.
+
+    Attributes
+    ----------
+    params:
+        Settings of the fit.
+    components:
+        Fitted components, params.n_components of them, or None if the
+        mixture is not fitted.
+    convergence:
+        How EM converged to the components, or None if the mixture is not
+        fitted.
+    """
+
+    params: VonMisesFisherMixtureParams
+    components: VonMisesFisherMixtureComponents | None = None
+    convergence: SphericalMixtureConvergence | None = None
+
+    def __post_init__(self) -> None:
+        if (self.components is None) != (self.convergence is None):
+            raise ValueError(
+                "components and convergence must both be set or both be None"
+            )
+        if (
+            self.components is not None
+            and self.components.component_count != self.params.n_components
+        ):
+            raise ValueError(
+                f"components hold {self.components.component_count} components, "
+                f"but params.n_components is {self.params.n_components}"
+            )
+
+    @property
+    def is_fitted(self) -> bool:
+        """Whether the components and convergence are set."""
+        return self.components is not None and self.convergence is not None
+
+
+class VonMisesFisherMixture:
+    """
+    A mixture of von Mises-Fisher distributions on the unit hypersphere.
+
+    Every method returns a new mixture or a result, and leaves this mixture
+    unchanged.
+
+    Attributes
+    ----------
+    params_type:
+        Params type of the mixture.
+    components_type:
+        Components type of the mixture.
+    state_type:
+        State type of the mixture.
+    """
+
+    params_type: type[VonMisesFisherMixtureParams] = VonMisesFisherMixtureParams
+    components_type: type[VonMisesFisherMixtureComponents] = (
+        VonMisesFisherMixtureComponents
+    )
+    state_type: type[VonMisesFisherMixtureState] = VonMisesFisherMixtureState
+
+    def __init__(self, params: VonMisesFisherMixtureParams) -> None:
+        self._state: VonMisesFisherMixtureState = VonMisesFisherMixtureState(
+            params=params
+        )
+
+    @classmethod
+    def from_state(cls, state: VonMisesFisherMixtureState) -> Self:
+        """Create a mixture from a state."""
+        mixture: Self = cls(state.params)
+        mixture._state = state
+        return mixture
+
+    @property
+    def params(self) -> VonMisesFisherMixtureParams:
+        """Settings of the fit."""
+        return self._state.params
+
+    @property
+    def state(self) -> VonMisesFisherMixtureState:
+        """State of the mixture."""
+        return self._state
+
+    @property
+    def is_fitted(self) -> bool:
+        """Whether the mixture is fitted."""
+        return self._state.is_fitted
+
+    def fit(self, X: np.ndarray) -> Self:
+        """
+        Fit the mixture to data with EM.
+
+        Arguments
+        ---------
+        X:
+            Unit vectors, shape (N, D).
+
+        Returns
+        -------
+        A new fitted mixture with the same params.
+        """
+        components, convergence = fit_von_mises_fisher_mixture(X, self.params)
+        return type(self).from_state(
+            VonMisesFisherMixtureState(
+                params=self.params, components=components, convergence=convergence
+            )
+        )
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Return the responsibilities of unit vectors X, shape (N, K)."""
+        return compute_responsibilities(X, self._fitted_components())
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """Return the most probable component of unit vectors X, shape (N,)."""
+        return self.predict_proba(X).argmax(axis=1)  # type: ignore[no-any-return]
+
+    def score_samples(self, X: np.ndarray) -> np.ndarray:
+        """Return the log-likelihood of unit vectors X, shape (N,)."""
+        return compute_log_likelihoods(X, self._fitted_components())
+
+    def score(self, X: np.ndarray) -> float:
+        """Return the mean log-likelihood of unit vectors X, shape (N, D)."""
         return float(self.score_samples(X).mean())
 
     def aic(self, X: np.ndarray) -> float:
-        """
-        Akaike Information Criterion for the fitted model on X.
-
-        Lower is better. Penalises complexity with ``2 × n_parameters``.
-        Requires the model to be fitted.
-
-        Parameters
-        ----------
-        X:
-            Unit-vector data, shape (N, D).
-
-        Returns
-        -------
-        float
-        """
-        if not self.is_fitted():
-            raise ValueError("Model is not fitted yet. Call fit() before aic().")
-        n_params = self.n_components * (X.shape[1] + 1) - 1
-        return float(-2.0 * self.score_samples(X).sum() + 2.0 * n_params)
+        """Return the Akaike Information Criterion on unit vectors X."""
+        return compute_aic(X, self._fitted_components())
 
     def bic(self, X: np.ndarray) -> float:
-        """
-        Bayesian Information Criterion for the fitted model on X.
-
-        Lower is better. Penalises complexity with ``n_parameters × log(N)``.
-        Requires the model to be fitted.
-
-        Parameters
-        ----------
-        X:
-            Unit-vector data, shape (N, D).
-
-        Returns
-        -------
-        float
-        """
-        if not self.is_fitted():
-            raise ValueError("Model is not fitted yet. Call fit() before bic().")
-        n_params = self.n_components * (X.shape[1] + 1) - 1
-        return float(-2.0 * self.score_samples(X).sum() + n_params * np.log(X.shape[0]))
+        """Return the Bayesian Information Criterion on unit vectors X."""
+        return compute_bic(X, self._fitted_components())
 
     def icl(self, X: np.ndarray) -> float:
-        """
-        Integrated Completed Likelihood for the fitted model on X.
-
-        Lower is better. Extends BIC with a classification entropy term that
-        increases when component assignments are uncertain.
-        Requires the model to be fitted.
-
-        Parameters
-        ----------
-        X:
-            Unit-vector data, shape (N, D).
-
-        Returns
-        -------
-        float
-        """
-        if not self.is_fitted():
-            raise ValueError("Model is not fitted yet. Call fit() before icl().")
-        entropy: float = _classification_entropy(self.predict_proba(X))
-        return float(self.bic(X) + 2.0 * entropy)
+        """Return the Integrated Completed Likelihood on unit vectors X."""
+        return compute_icl(X, self._fitted_components())
 
     def bici(self, X: np.ndarray) -> float:
-        """
-        Complete-data BIC for the fitted model on X.
-
-        Lower is better. Extends BIC using the complete-data log-likelihood
-        under hard MAP component assignments.
-        Requires the model to be fitted.
-
-        Parameters
-        ----------
-        X:
-            Unit-vector data, shape (N, D).
-
-        Returns
-        -------
-        float
-        """
-        if not self.is_fitted():
-            raise ValueError("Model is not fitted yet. Call fit() before bici().")
-        responsibilities: np.ndarray = self.predict_proba(X)
-        assignments: np.ndarray = responsibilities.argmax(axis=1)
-        log_map_prob: np.ndarray = np.log(
-            responsibilities[np.arange(X.shape[0]), assignments]
-        )
-        return float(self.bic(X) - 2.0 * log_map_prob.sum())
+        """Return the complete-data BIC on unit vectors X."""
+        return compute_bici(X, self._fitted_components())
 
     def dic(self, X: np.ndarray) -> float:
-        """
-        Deviance Information Criterion (complete-data) for the fitted model on X.
+        """Return the Deviance Information Criterion on unit vectors X."""
+        return compute_dic(X, self._fitted_components())
 
-        Lower is better. Uses the EM Q-function (expected complete-data
-        log-likelihood) with a flat 2 × n_parameters complexity penalty.
-        Requires the model to be fitted.
-
-        Parameters
-        ----------
-        X:
-            Unit-vector data, shape (N, D).
-
-        Returns
-        -------
-        float
-        """
-        if not self.is_fitted():
-            raise ValueError("Model is not fitted yet. Call fit() before dic().")
-        n_params: int = self.n_components * (X.shape[1] + 1) - 1
-        entropy: float = _classification_entropy(self.predict_proba(X))
-        log_likelihood: float = float(self.score_samples(X).sum())
-        return float(-2.0 * log_likelihood + 2.0 * entropy + 2.0 * n_params)
-
-    def _params_to_dict(self) -> dict:
-        return {
-            "n_components": self.n_components,
-            "init": self.init,
-            "max_iter": self.max_iter,
-            "tol": self.tol,
-            "rtol": self.rtol,
-            "verbose": self.verbose,
-            "seed": self.seed,
-            "log_normalizer_method": self.log_normalizer_method.value,
-            "log_likelihood_": self.log_likelihood_,
-            "n_iter_": self.n_iter_,
-            "params_": self.params_.to_dict() if self.params_ is not None else None,
-        }
-
-    @classmethod
-    def _params_from_dict(cls, data: dict) -> "VonMisesFisherMixture":
-        model = cls(
-            n_components=data["n_components"],
-            init=data["init"],
-            max_iter=data["max_iter"],
-            tol=data["tol"],
-            rtol=data["rtol"],
-            verbose=data["verbose"],
-            seed=data.get("seed"),
-            log_normalizer_method=VmfLogNormalizerMethod(
-                data.get(
-                    "log_normalizer_method", VmfLogNormalizerMethod.AMOS_UPPER.value
-                )
-            ),
-        )
-        model.log_likelihood_ = data["log_likelihood_"]
-        model.n_iter_ = data["n_iter_"]
-
-        if data["params_"] is not None:
-            p = data["params_"]
-            model.params_ = VonMisesFisherMixtureParams(
-                weights=np.array(p["weights"]),
-                means=np.array(p["means"]),
-                concentrations=np.array(p["concentrations"]),
-            )
-
-        return model
-
-
-# ---------------------------------------------------------------------------
-# Fitter function — owns all EM logic
-# ---------------------------------------------------------------------------
+    def _fitted_components(self) -> VonMisesFisherMixtureComponents:
+        if self._state.components is None:
+            raise RuntimeError("von Mises-Fisher mixture is not fitted; call fit first")
+        return self._state.components
 
 
 def fit_von_mises_fisher_mixture(
     X: np.ndarray,
-    n_components: int,
-    init: Literal["random", "kmeans"] | MeanInitStrategy = "random",
-    max_iter: int = 100,
-    tol: float = 1e-4,
-    rtol: float = 1e-6,
-    verbose: bool = False,
-    seed: int | None = None,
-    log_normalizer_method: VmfLogNormalizerMethod = VmfLogNormalizerMethod.AMOS_UPPER,
-) -> tuple[VonMisesFisherMixtureParams, float, int]:
+    params: VonMisesFisherMixtureParams,
+) -> tuple[VonMisesFisherMixtureComponents, SphericalMixtureConvergence]:
     """
-    Fit a von Mises-Fisher mixture model via EM.
+    Fit a von Mises-Fisher mixture to data with EM.
 
-    The M-step uses an analytical mean update. The concentration update follows
-    ``log_normalizer_method``: a closed form for the Amos bounds, and a
-    root-finder on the exact Bessel ratio for ``EXACT``.
+    Arguments
+    ---------
+    X:
+        Unit vectors, shape (N, D).
+    params:
+        Settings of the fit.
 
-    ``seed`` seeds the named initialisers; it is ignored when ``init`` is a
-    ``MeanInitStrategy``, which owns its own randomness.
-
-    Returns the fitted components, final log-likelihood, and iteration count.
+    Returns
+    -------
+    The fitted components, and how EM converged to them.
     """
-    K: int = n_components
+    K: int = params.n_components
     D: int = X.shape[1]
 
     if D < 2:
         raise ValueError("number of features must be 2 or higher")
 
-    mean_init: MeanInitStrategy = (
-        create_mean_initializer(init, seed=seed) if isinstance(init, str) else init
-    )
+    mean_init: MeanInitStrategy = create_mean_initializer(params.init, seed=params.seed)
 
     weights: np.ndarray = _init_component_weights(K)
     means: np.ndarray = mean_init(X, K)
     concentrations: np.ndarray = _init_component_concentrations(K)
     log_likelihood: float = -np.inf
     n_iter: int = 0
+    converged: bool = False
 
-    for i in range(max_iter):
+    for i in range(params.max_iter):
         resp: np.ndarray = _compute_responsibilities(
-            X, weights, means, concentrations, log_normalizer_method
+            X, weights, means, concentrations, params.log_normalizer_method
         )
         weights, means, concentrations = _maximization_step(
-            X, resp, D, log_normalizer_method
+            X, resp, D, params.log_normalizer_method
         )
         converged, log_likelihood = _check_convergence(
             X,
             weights,
             means,
             concentrations,
-            log_normalizer_method,
+            params.log_normalizer_method,
             i,
             log_likelihood,
-            tol,
-            rtol,
-            verbose,
+            params.tol,
+            params.rtol,
+            params.verbose,
         )
         n_iter = i + 1
         if converged:
             break
 
-    components = VonMisesFisherMixtureParams(
+    components: VonMisesFisherMixtureComponents = VonMisesFisherMixtureComponents(
         weights=weights,
         means=means,
         concentrations=concentrations,
+        log_normalizer_method=params.log_normalizer_method,
     )
-    return components, log_likelihood, n_iter
+    convergence: SphericalMixtureConvergence = SphericalMixtureConvergence(
+        log_likelihood=log_likelihood,
+        n_iter=n_iter,
+        converged=converged,
+    )
+    return components, convergence
 
 
 # ---------------------------------------------------------------------------
