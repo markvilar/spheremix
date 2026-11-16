@@ -3,6 +3,18 @@ Package for mixture models of spherical probability distributions.
 """
 
 from .base import SerializableMixin as SerializableMixin
+from .convergence import SphericalMixtureConvergence as SphericalMixtureConvergence
+from .protocols import SphericalMixture as SphericalMixture
+from .protocols import SphericalMixtureComponents as SphericalMixtureComponents
+from .protocols import SphericalMixtureParams as SphericalMixtureParams
+from .protocols import SphericalMixtureState as SphericalMixtureState
+from .scoring import compute_aic as compute_aic
+from .scoring import compute_bic as compute_bic
+from .scoring import compute_bici as compute_bici
+from .scoring import compute_dic as compute_dic
+from .scoring import compute_icl as compute_icl
+from .scoring import compute_log_likelihoods as compute_log_likelihoods
+from .scoring import compute_responsibilities as compute_responsibilities
 from .initializer import MeanInitStrategy as MeanInitStrategy
 from .initializer import create_mean_initializer as create_mean_initializer
 
