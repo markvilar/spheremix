@@ -9,12 +9,12 @@ and the logging.
 import numpy as np
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from loguru import logger
 
 from .convergence import SphericalMixtureConvergence
+from .progress import FitProgress, FitProgressCallback
 from .protocols import SphericalMixtureComponents
 from .scoring import compute_log_likelihoods, compute_responsibilities
 
@@ -24,36 +24,6 @@ type ExpectationStep[C: SphericalMixtureComponents] = Callable[
 type MaximizationStep[C: SphericalMixtureComponents] = Callable[
     [np.ndarray, np.ndarray, C], C
 ]
-
-
-@dataclass(slots=True, frozen=True)
-class FitProgress:
-    """
-    The progress of a mixture fit after one EM iteration.
-
-    Attributes
-    ----------
-    n_iter:
-        Number of completed iterations, from 1 to max_iter.
-    max_iter:
-        Maximum number of iterations of the fit.
-    log_likelihood:
-        Observed-data log-likelihood after the iteration.
-    log_likelihood_change:
-        Absolute change of the log-likelihood from the previous iteration;
-        infinite after the first iteration.
-    converged:
-        Whether the fit converged at this iteration.
-    """
-
-    n_iter: int
-    max_iter: int
-    log_likelihood: float
-    log_likelihood_change: float
-    converged: bool
-
-
-type FitProgressCallback = Callable[[FitProgress], None]
 
 
 @runtime_checkable

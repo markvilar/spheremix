@@ -13,8 +13,9 @@ from typing import Literal, Self
 from spheremix.distributions import power_spherical_logpdf
 
 from .convergence import SphericalMixtureConvergence
-from .em_fitter import FitProgressCallback, fit_mixture_em
+from .em_fitter import fit_mixture_em
 from .initializer import MeanInitStrategy, create_mean_initializer
+from .progress import FitProgressCallback
 from .scoring import (
     compute_aic,
     compute_bic,

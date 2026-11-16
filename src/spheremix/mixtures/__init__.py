@@ -5,12 +5,12 @@ Package for mixture models of spherical probability distributions.
 from .convergence import SphericalMixtureConvergence as SphericalMixtureConvergence
 from .em_fitter import EMSettings as EMSettings
 from .em_fitter import ExpectationStep as ExpectationStep
-from .em_fitter import FitProgress as FitProgress
-from .em_fitter import FitProgressCallback as FitProgressCallback
 from .em_fitter import MaximizationStep as MaximizationStep
 from .em_fitter import fit_mixture_em as fit_mixture_em
 from .initializer import MeanInitStrategy as MeanInitStrategy
 from .initializer import create_mean_initializer as create_mean_initializer
+from .progress import FitProgress as FitProgress
+from .progress import FitProgressCallback as FitProgressCallback
 from .protocols import SphericalMixture as SphericalMixture
 from .protocols import SphericalMixtureComponents as SphericalMixtureComponents
 from .protocols import SphericalMixtureParams as SphericalMixtureParams
