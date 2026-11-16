@@ -2,12 +2,12 @@
 Package for probability distributions.
 """
 
-from .pkbd import (
-    PKBDistribution as PKBDistribution,
-    sample_pkbd as sample_pkbd,
-    pkbd_logkernel as pkbd_logkernel,
-    pkbd_logpdf as pkbd_logpdf,
-    pkbd_pdf as pkbd_pdf,
+from .poisson_kernel import (
+    PoissonKernelDistribution as PoissonKernelDistribution,
+    sample_poisson_kernel as sample_poisson_kernel,
+    poisson_kernel_logkernel as poisson_kernel_logkernel,
+    poisson_kernel_logpdf as poisson_kernel_logpdf,
+    poisson_kernel_pdf as poisson_kernel_pdf,
 )
 
 from .spherical_cauchy import (

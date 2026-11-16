@@ -10,7 +10,7 @@ import scipy.optimize
 from dataclasses import dataclass
 from typing import Literal, Self
 
-from spheremix.distributions import pkbd_logpdf
+from spheremix.distributions import poisson_kernel_logpdf
 
 from .convergence import SphericalMixtureConvergence
 from .em_fitter import fit_mixture_em
@@ -327,7 +327,7 @@ def _compute_log_joint_densities(
 
     log_joint: np.ndarray = np.empty((N, K))
     for k in range(K):
-        log_joint[:, k] = np.log(weights[k]) + pkbd_logpdf(
+        log_joint[:, k] = np.log(weights[k]) + poisson_kernel_logpdf(
             X, means[k], concentrations[k]
         )
 
@@ -356,7 +356,7 @@ def _maximization_step(
             mu_raw = params[:-1]
             rho = float(np.clip(params[-1], 0.0, 0.9999))
             mu = mu_raw / np.linalg.norm(mu_raw)
-            ll = pkbd_logpdf(X, mu, rho)
+            ll = poisson_kernel_logpdf(X, mu, rho)
             return float(-np.dot(resp[:, k], ll))
 
         mu_init = means[k]

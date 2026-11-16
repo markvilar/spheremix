@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 
 from spheremix.distributions import (
     VmfLogNormalizerMethod,
-    pkbd_logpdf,
+    poisson_kernel_logpdf,
     power_spherical_logpdf,
     sample_uniform_sphere,
     spherical_cauchy_logpdf,
@@ -55,7 +55,7 @@ CASES: list[
     tuple[Callable[..., SphericalMixtureComponents], LogPdf, tuple[float, float]]
 ] = [
     (SphericalCauchyMixtureComponents, spherical_cauchy_logpdf, (0.2, 0.9)),
-    (PoissonKernelMixtureComponents, pkbd_logpdf, (0.2, 0.9)),
+    (PoissonKernelMixtureComponents, poisson_kernel_logpdf, (0.2, 0.9)),
     (PowerSphericalMixtureComponents, power_spherical_logpdf, (5.0, 50.0)),
     (
         lambda **arrays: VonMisesFisherMixtureComponents(
