@@ -2,6 +2,8 @@
 Module for the von Mises-Fisher mixture model.
 """
 
+import dataclasses
+
 import numpy as np
 import scipy.optimize
 
@@ -9,14 +11,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, Self
 
-from loguru import logger
-
 from spheremix.distributions import (
     VmfLogNormalizerMethod,
     von_mises_fisher_logpdf,
 )
 
 from .convergence import SphericalMixtureConvergence
+from .em_fitter import fit_mixture_em
 from .initializer import MeanInitStrategy, create_mean_initializer
 from .scoring import (
     compute_aic,
@@ -313,49 +314,15 @@ def fit_von_mises_fisher_mixture(
         raise ValueError("number of features must be 2 or higher")
 
     mean_init: MeanInitStrategy = create_mean_initializer(params.init, seed=params.seed)
-
-    weights: np.ndarray = _init_component_weights(K)
-    means: np.ndarray = mean_init(X, K)
-    concentrations: np.ndarray = _init_component_concentrations(K)
-    log_likelihood: float = -np.inf
-    n_iter: int = 0
-    converged: bool = False
-
-    for i in range(params.max_iter):
-        resp: np.ndarray = _compute_responsibilities(
-            X, weights, means, concentrations, params.log_normalizer_method
+    initial_components: VonMisesFisherMixtureComponents = (
+        VonMisesFisherMixtureComponents(
+            weights=np.full(K, 1.0 / K),
+            means=mean_init(X, K),
+            concentrations=np.full(K, 1.0),
+            log_normalizer_method=params.log_normalizer_method,
         )
-        weights, means, concentrations = _maximization_step(
-            X, resp, D, params.log_normalizer_method
-        )
-        converged, log_likelihood = _check_convergence(
-            X,
-            weights,
-            means,
-            concentrations,
-            params.log_normalizer_method,
-            i,
-            log_likelihood,
-            params.tol,
-            params.rtol,
-            params.verbose,
-        )
-        n_iter = i + 1
-        if converged:
-            break
-
-    components: VonMisesFisherMixtureComponents = VonMisesFisherMixtureComponents(
-        weights=weights,
-        means=means,
-        concentrations=concentrations,
-        log_normalizer_method=params.log_normalizer_method,
     )
-    convergence: SphericalMixtureConvergence = SphericalMixtureConvergence(
-        log_likelihood=log_likelihood,
-        n_iter=n_iter,
-        converged=converged,
-    )
-    return components, convergence
+    return fit_mixture_em(X, initial_components, _maximization_step, params)
 
 
 # ---------------------------------------------------------------------------
@@ -387,59 +354,11 @@ def _compute_log_joint_densities(
     return log_joint  # type: ignore[no-any-return]
 
 
-def _compute_log_marginal_densities(
-    X: np.ndarray,
-    weights: np.ndarray,
-    means: np.ndarray,
-    concentrations: np.ndarray,
-    log_normalizer_method: VmfLogNormalizerMethod,
-) -> np.ndarray:
-    """
-    Compute the observed-data log p(x_n | Θ) for each sample. Returns shape (N,).
-    """
-    log_joint: np.ndarray = _compute_log_joint_densities(
-        X, weights, means, concentrations, log_normalizer_method
-    )
-    return np.logaddexp.reduce(log_joint, axis=1)  # type: ignore[no-any-return]
-
-
-def _compute_posterior_densities(
-    X: np.ndarray,
-    weights: np.ndarray,
-    means: np.ndarray,
-    concentrations: np.ndarray,
-    log_normalizer_method: VmfLogNormalizerMethod,
-) -> np.ndarray:
-    """
-    Compute p(z=k | x_n, Θ) for all samples via log-sum-exp. Returns shape (N, K).
-    """
-    log_joint: np.ndarray = _compute_log_joint_densities(
-        X, weights, means, concentrations, log_normalizer_method
-    )
-    log_marginal: np.ndarray = np.logaddexp.reduce(log_joint, axis=1)
-    log_resp: np.ndarray = log_joint - log_marginal[:, np.newaxis]
-    return np.exp(log_resp)  # type: ignore[no-any-return]
-
-
-def _compute_responsibilities(
-    X: np.ndarray,
-    weights: np.ndarray,
-    means: np.ndarray,
-    concentrations: np.ndarray,
-    log_normalizer_method: VmfLogNormalizerMethod,
-) -> np.ndarray:
-    """EM alias for _compute_posterior_densities. Returns shape (N, K)."""
-    return _compute_posterior_densities(
-        X, weights, means, concentrations, log_normalizer_method
-    )  # type: ignore[no-any-return]
-
-
 def _maximization_step(
     X: np.ndarray,
     resp: np.ndarray,
-    dim: int,
-    log_normalizer_method: VmfLogNormalizerMethod,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    components: VonMisesFisherMixtureComponents,
+) -> VonMisesFisherMixtureComponents:
     """
     Update weights, means, and concentrations given responsibilities.
 
@@ -448,8 +367,10 @@ def _maximization_step(
     the normaliser given by ``log_normalizer_method``, where r_bar is the mean
     resultant length.
 
-    Returns updated (weights, means, concentrations).
+    Returns the updated components.
     """
+    dim: int = components.dimension
+    log_normalizer_method: VmfLogNormalizerMethod = components.log_normalizer_method
     N, K = resp.shape
     new_weights: np.ndarray = resp.sum(axis=0) / N  # type: ignore[assignment]
     new_means: np.ndarray = np.empty((K, dim))
@@ -468,7 +389,12 @@ def _maximization_step(
         r_bar = float(np.clip(r_bar, 0.0, 1.0 - 1e-9))
         new_concentrations[k] = _solve_concentration(r_bar, dim, log_normalizer_method)
 
-    return new_weights, new_means, new_concentrations
+    return dataclasses.replace(
+        components,
+        weights=new_weights,
+        means=new_means,
+        concentrations=new_concentrations,
+    )
 
 
 def _solve_concentration(
@@ -574,50 +500,3 @@ _CONCENTRATION_SOLVER_REGISTRY: dict[
     VmfLogNormalizerMethod.AMOS_UPPER: _solve_concentration_amos_upper,
     VmfLogNormalizerMethod.AMOS_LOWER: _solve_concentration_amos_lower,
 }
-
-
-def _check_convergence(
-    X: np.ndarray,
-    weights: np.ndarray,
-    means: np.ndarray,
-    concentrations: np.ndarray,
-    log_normalizer_method: VmfLogNormalizerMethod,
-    iteration: int,
-    prev_loglik: float,
-    tol: float,
-    rtol: float,
-    verbose: bool,
-) -> tuple[bool, float]:
-    """
-    Compute observed-data log-likelihood and check absolute and relative convergence.
-    Returns (converged, loglik).
-    """
-    loglik: float = float(
-        _compute_log_marginal_densities(
-            X, weights, means, concentrations, log_normalizer_method
-        ).sum()
-    )
-
-    if verbose:
-        logger.info(f"Iter {iteration:03d} – loglik = {loglik:.5f}")
-
-    delta: float = abs(loglik - prev_loglik)
-    abs_converged: bool = delta < tol
-    rel_converged: bool = delta < rtol * max(abs(prev_loglik), 1.0)
-    converged: bool = abs_converged or rel_converged
-
-    if converged and verbose:
-        logger.info("Converged!")
-
-    return converged, loglik
-
-
-def _init_component_weights(K: int) -> np.ndarray:
-    """Return uniform mixing weights summing to 1."""
-    weights: np.ndarray = np.ones(K)
-    return weights / np.sum(weights)  # type: ignore[no-any-return]
-
-
-def _init_component_concentrations(K: int, init_value: float = 1.0) -> np.ndarray:
-    """Return initial concentration parameters, all set to 1.0."""
-    return np.full(shape=(K,), fill_value=init_value)
