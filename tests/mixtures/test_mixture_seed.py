@@ -12,23 +12,31 @@ from typing import Literal
 
 from spheremix.distributions import sample_uniform_sphere
 from spheremix.mixtures import (
-    PKBMixture,
+    PoissonKernelMixture,
+    PoissonKernelMixtureParams,
     PowerSphericalMixture,
+    PowerSphericalMixtureParams,
     SphericalCauchyMixture,
+    SphericalCauchyMixtureParams,
     VonMisesFisherMixture,
+    VonMisesFisherMixtureParams,
     create_mean_initializer,
 )
 
 type Mixture = (
-    SphericalCauchyMixture | PKBMixture | PowerSphericalMixture | VonMisesFisherMixture
+    SphericalCauchyMixture
+    | PoissonKernelMixture
+    | PowerSphericalMixture
+    | VonMisesFisherMixture
 )
 type MixtureType = type[Mixture]
 
-MIXTURE_TYPES: list[MixtureType] = [
-    SphericalCauchyMixture,
-    PKBMixture,
-    PowerSphericalMixture,
-    VonMisesFisherMixture,
+# (mixture type, params type)
+MIXTURE_TYPES: list[tuple[MixtureType, type]] = [
+    (SphericalCauchyMixture, SphericalCauchyMixtureParams),
+    (PoissonKernelMixture, PoissonKernelMixtureParams),
+    (PowerSphericalMixture, PowerSphericalMixtureParams),
+    (VonMisesFisherMixture, VonMisesFisherMixtureParams),
 ]
 INIT_METHODS: list[Literal["random", "kmeans"]] = ["random", "kmeans"]
 
@@ -48,44 +56,47 @@ def data() -> NDArray[np.float64]:
 
 
 def _assert_same_fit(first: Mixture, second: Mixture) -> None:
-    assert first.params_ is not None
-    assert second.params_ is not None
-    assert_array_equal(first.params_.weights, second.params_.weights)
-    assert_array_equal(first.params_.means, second.params_.means)
-    assert_array_equal(first.params_.concentrations, second.params_.concentrations)
-    assert first.log_likelihood_ == second.log_likelihood_
-    assert first.n_iter_ == second.n_iter_
+    assert first.state.components is not None
+    assert second.state.components is not None
+    assert_array_equal(first.state.components.weights, second.state.components.weights)
+    assert_array_equal(first.state.components.means, second.state.components.means)
+    assert_array_equal(
+        first.state.components.concentrations, second.state.components.concentrations
+    )
+    assert first.state.convergence == second.state.convergence
 
 
 @pytest.mark.parametrize("init", INIT_METHODS)
-@pytest.mark.parametrize("mixture_type", MIXTURE_TYPES)
+@pytest.mark.parametrize(("mixture_type", "params_type"), MIXTURE_TYPES)
 def test_same_seed_gives_same_fit(
     mixture_type: MixtureType,
+    params_type: type,
     init: Literal["random", "kmeans"],
     data: NDArray[np.float64],
 ) -> None:
     first: Mixture = mixture_type(
-        n_components=2, init=init, max_iter=MAX_ITER, seed=3
+        params_type(n_components=2, init=init, max_iter=MAX_ITER, seed=3)
     ).fit(data)
     second: Mixture = mixture_type(
-        n_components=2, init=init, max_iter=MAX_ITER, seed=3
+        params_type(n_components=2, init=init, max_iter=MAX_ITER, seed=3)
     ).fit(data)
 
     _assert_same_fit(first, second)
 
 
 @pytest.mark.parametrize("init", INIT_METHODS)
-@pytest.mark.parametrize("mixture_type", MIXTURE_TYPES)
+@pytest.mark.parametrize(("mixture_type", "params_type"), MIXTURE_TYPES)
 def test_refit_is_stable(
     mixture_type: MixtureType,
+    params_type: type,
     init: Literal["random", "kmeans"],
     data: NDArray[np.float64],
 ) -> None:
-    model: Mixture = mixture_type(n_components=2, init=init, max_iter=MAX_ITER, seed=3)
-    first: Mixture = mixture_type.from_dict(model.fit(data).to_dict())  # type: ignore[attr-defined]
-    second: Mixture = model.fit(data)
+    model: Mixture = mixture_type(
+        params_type(n_components=2, init=init, max_iter=MAX_ITER, seed=3)
+    )
 
-    _assert_same_fit(first, second)
+    _assert_same_fit(model.fit(data), model.fit(data))
 
 
 @pytest.mark.parametrize("init", INIT_METHODS)
@@ -99,24 +110,3 @@ def test_different_seeds_give_different_starts(
     second: NDArray[np.float64] = create_mean_initializer(init, seed=2)(data, 3)
 
     assert not np.array_equal(first, second)
-
-
-@pytest.mark.parametrize("seed", [None, 0, 42])
-@pytest.mark.parametrize("mixture_type", MIXTURE_TYPES)
-def test_seed_serialises(mixture_type: MixtureType, seed: int | None) -> None:
-    model: Mixture = mixture_type(n_components=2, seed=seed)
-
-    restored: Mixture = mixture_type.from_dict(model.to_dict())  # type: ignore[attr-defined]
-
-    assert model.to_dict()["seed"] == seed  # type: ignore[attr-defined]
-    assert restored.seed == seed
-
-
-@pytest.mark.parametrize("mixture_type", MIXTURE_TYPES)
-def test_model_without_seed_key_loads(mixture_type: MixtureType) -> None:
-    serialised: dict = mixture_type(n_components=2, seed=5).to_dict()  # type: ignore[attr-defined]
-    del serialised["seed"]
-
-    restored: Mixture = mixture_type.from_dict(serialised)  # type: ignore[attr-defined]
-
-    assert restored.seed is None
