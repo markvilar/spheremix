@@ -58,9 +58,13 @@ class _RecordedFit:
     log_likelihood: float
     n_iter: int
     converged: bool
-    # An L-BFGS-B M-step differs by about 1e-8 across machines, so only the
-    # closed-form vMF M-step is compared at round-off.
-    rtol: float = 1e-6
+    # L-BFGS-B stops anywhere within its gradient tolerance, so the parameters
+    # of its fits differ by up to about 1e-5 across machines. The log-likelihood
+    # is flat near the optimum and stays far closer. Only the closed-form vMF
+    # M-step is compared at round-off.
+    parameter_rtol: float = 1e-4
+    parameter_atol: float = 1e-4
+    log_likelihood_rtol: float = 1e-6
 
 
 # (mixture type, params type, recorded fit)
@@ -123,7 +127,9 @@ REGRESSION_CASES: list[tuple[type, type, _RecordedFit]] = [
             log_likelihood=-85.71095380014707,
             n_iter=10,
             converged=False,
-            rtol=1e-10,
+            parameter_rtol=1e-10,
+            parameter_atol=0.0,
+            log_likelihood_rtol=1e-10,
         ),
     ),
 ]
@@ -186,17 +192,23 @@ def test_fit_matches_recorded_fit(
 
     assert fitted.state.components is not None
     assert convergence is not None
-    assert_allclose(
-        fitted.state.components.weights, recorded.weights, rtol=recorded.rtol
-    )
-    assert_allclose(fitted.state.components.means, recorded.means, rtol=recorded.rtol)
-    assert_allclose(
-        fitted.state.components.concentrations,
-        recorded.concentrations,
-        rtol=recorded.rtol,
-    )
+    pairs: list[tuple[NDArray[np.float64], NDArray[np.float64]]] = [
+        (fitted.state.components.weights, np.array(recorded.weights)),
+        (fitted.state.components.means, np.array(recorded.means)),
+        (
+            fitted.state.components.concentrations,
+            np.array(recorded.concentrations),
+        ),
+    ]
+    for fitted_values, recorded_values in pairs:
+        assert_allclose(
+            fitted_values,
+            recorded_values,
+            rtol=recorded.parameter_rtol,
+            atol=recorded.parameter_atol,
+        )
     assert convergence.log_likelihood == pytest.approx(
-        recorded.log_likelihood, rel=recorded.rtol
+        recorded.log_likelihood, rel=recorded.log_likelihood_rtol
     )
     assert convergence.n_iter == recorded.n_iter
     assert convergence.converged is recorded.converged
