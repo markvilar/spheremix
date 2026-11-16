@@ -34,9 +34,14 @@ from matplotlib.axes import Axes
 from sklearn.decomposition import PCA
 
 from spheremix.mixtures import (
-    PKBMixture,
+    PoissonKernelMixture,
+    PoissonKernelMixtureParams,
     PowerSphericalMixture,
+    PowerSphericalMixtureParams,
     SphericalCauchyMixture,
+    SphericalCauchyMixtureParams,
+    SphericalMixtureComponents,
+    SphericalMixtureConvergence,
 )
 
 logger.remove()
@@ -45,12 +50,13 @@ logger.add(
     format="<green>{time:HH:mm:ss}</green> <level>{level:<8}</level> {message}",
 )
 
-type AnyMixture = SphericalCauchyMixture | PKBMixture | PowerSphericalMixture
+type AnyMixture = SphericalCauchyMixture | PoissonKernelMixture | PowerSphericalMixture
 
-FAMILIES: list[tuple[str, type]] = [
-    ("SphericalCauchy", SphericalCauchyMixture),
-    ("PKBD", PKBMixture),
-    ("PowerSpherical", PowerSphericalMixture),
+# (display name, mixture type, params type)
+FAMILIES: list[tuple[str, type, type]] = [
+    ("SphericalCauchy", SphericalCauchyMixture, SphericalCauchyMixtureParams),
+    ("PoissonKernel", PoissonKernelMixture, PoissonKernelMixtureParams),
+    ("PowerSpherical", PowerSphericalMixture, PowerSphericalMixtureParams),
 ]
 
 
@@ -86,6 +92,7 @@ def normalize_rows(X: np.ndarray) -> np.ndarray:
 def fit_family(
     family_name: str,
     model_class: type,
+    params_class: type,
     X: np.ndarray,
     k_values: list[int],
     init: str,
@@ -99,7 +106,8 @@ def fit_family(
     Arguments
     ---------
     family_name: Display name of the model family.
-    model_class: Mixture model class to instantiate (must follow SphericalMixtureModel).
+    model_class: Mixture class to instantiate (must follow SphericalMixture).
+    params_class: Params class of the mixture.
     X: Unit-vector data, shape (N, D).
     k_values: Component counts to sweep.
     init: Mean initialization strategy ("random" or "kmeans").
@@ -117,22 +125,25 @@ def fit_family(
 
     for k in k_values:
         logger.info(f"[{family_name}] Fitting K={k} ...")
-        model: AnyMixture = model_class(
-            n_components=k,
-            init=init,
-            max_iter=max_iter,
-            tol=tol,
-            rtol=rtol,
+        unfitted: AnyMixture = model_class(
+            params_class(
+                n_components=k,
+                init=init,
+                max_iter=max_iter,
+                tol=tol,
+                rtol=rtol,
+            )
         )
         t0: float = time.perf_counter()
-        model.fit(X)
+        model: AnyMixture = unfitted.fit(X)
         elapsed: float = time.perf_counter() - t0
         aic: float = model.aic(X)
         bic: float = model.bic(X)
+        convergence: SphericalMixtureConvergence = _convergence(model)
         logger.info(
-            f"[{family_name}] K={k}  loglik={model.log_likelihood_:.2f}  "
+            f"[{family_name}] K={k}  loglik={convergence.log_likelihood:.2f}  "
             f"AIC={aic:.2f}  BIC={bic:.2f}  "
-            f"iter={model.n_iter_}  time={elapsed:.1f}s"
+            f"iter={convergence.n_iter}  time={elapsed:.1f}s"
         )
         aics.append(aic)
         bics.append(bic)
@@ -356,11 +367,12 @@ def main(
 
     results: list[FamilyResult] = []
 
-    for row_idx, (family_name, model_class) in enumerate(FAMILIES):
+    for row_idx, (family_name, model_class, params_class) in enumerate(FAMILIES):
         logger.info(f"=== Family: {family_name} ===")
         result: FamilyResult = fit_family(
             family_name=family_name,
             model_class=model_class,
+            params_class=params_class,
             X=X,
             k_values=k_values,
             init=init,
@@ -373,7 +385,7 @@ def main(
         best_model: AnyMixture = result.best_model
         best_k: int = result.best_k
         labels: np.ndarray = best_model.predict(X)
-        means: np.ndarray = best_model.get_params().means
+        means: np.ndarray = _components(best_model).means
 
         similarities: list[np.ndarray] = cluster_cosine_similarities(
             X, labels, means, best_k
@@ -404,13 +416,28 @@ def main(
     logger.info("=" * 60)
     for result in results:
         best: AnyMixture = result.best_model
-        params = best.get_params()
         logger.info(
             f"  {result.family_name:<20}  K={result.best_k}  "
-            f"loglik={best.log_likelihood_:.2f}  "
+            f"loglik={_convergence(best).log_likelihood:.2f}  "
             f"BIC={result.bics[result.best_idx]:.2f}  "
-            f"weights={params.weights.round(3)}"
+            f"weights={_components(best).weights.round(3)}"
         )
+
+
+def _components(model: AnyMixture) -> SphericalMixtureComponents:
+    """Return the fitted components of a mixture."""
+    components: SphericalMixtureComponents | None = model.state.components
+    if components is None:
+        raise RuntimeError("mixture is not fitted; call fit first")
+    return components
+
+
+def _convergence(model: AnyMixture) -> SphericalMixtureConvergence:
+    """Return the convergence record of a fitted mixture."""
+    convergence: SphericalMixtureConvergence | None = model.state.convergence
+    if convergence is None:
+        raise RuntimeError("mixture is not fitted; call fit first")
+    return convergence
 
 
 if __name__ == "__main__":

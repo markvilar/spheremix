@@ -1,496 +1,314 @@
 """
-Tests for SphericalCauchyMixture.to_dict / from_dict serialization.
+Tests for SphericalCauchyMixture and its params, components and state.
 """
-
-import json
 
 import numpy as np
 import pytest
 
 from numpy.testing import assert_allclose
-from spheremix.mixtures.spherical_cauchy import (
-    SphericalCauchyMixture,
-    SphericalCauchyMixtureParams,
-)
+from numpy.typing import NDArray
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+from spheremix.distributions import spherical_cauchy_logpdf
+from spheremix.mixtures import (
+    SphericalCauchyMixture,
+    SphericalCauchyMixtureComponents,
+    SphericalCauchyMixtureParams,
+    SphericalCauchyMixtureState,
+    SphericalMixture,
+    SphericalMixtureComponents,
+    SphericalMixtureConvergence,
+    SphericalMixtureParams,
+    SphericalMixtureState,
+    compute_aic,
+    compute_bic,
+    compute_bici,
+    compute_dic,
+    compute_icl,
+    compute_log_likelihoods,
+    compute_responsibilities,
+)
 
 N_COMPONENTS: int = 2
 N_FEATURES: int = 3
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def rng() -> np.random.Generator:
-    return np.random.default_rng(0)
-
-
-@pytest.fixture
-def components(rng: np.random.Generator) -> SphericalCauchyMixtureParams:
-    means = rng.standard_normal((N_COMPONENTS, N_FEATURES))
-    means /= np.linalg.norm(means, axis=1, keepdims=True)
-    return SphericalCauchyMixtureParams(
-        weights=np.array([0.4, 0.6]),
-        means=means,
-        concentrations=np.array([0.3, 0.7]),
-    )
-
-
-@pytest.fixture
-def fitted_model(
-    components: SphericalCauchyMixtureParams,
-) -> SphericalCauchyMixture:
-    model = SphericalCauchyMixture(n_components=N_COMPONENTS)
-    model.params_ = components
-    model.log_likelihood_ = -123.45
-    model.n_iter_ = 10
-    return model
-
-
-@pytest.fixture
-def unfitted_model() -> SphericalCauchyMixture:
-    return SphericalCauchyMixture(n_components=N_COMPONENTS)
-
-
-# ---------------------------------------------------------------------------
-# SphericalCauchyMixtureParams.to_dict
-# ---------------------------------------------------------------------------
-
-
-def test_components_to_dict_keys(components: SphericalCauchyMixtureParams) -> None:
-    assert set(components.to_dict().keys()) == {"weights", "means", "concentrations"}
-
-
-def test_components_to_dict_values_are_lists(
-    components: SphericalCauchyMixtureParams,
-) -> None:
-    d = components.to_dict()
-    assert isinstance(d["weights"], list)
-    assert isinstance(d["means"], list)
-    assert isinstance(d["concentrations"], list)
-
-
-def test_components_to_dict_shapes(
-    components: SphericalCauchyMixtureParams,
-) -> None:
-    d = components.to_dict()
-    assert len(d["weights"]) == N_COMPONENTS
-    assert len(d["means"]) == N_COMPONENTS
-    assert len(d["means"][0]) == N_FEATURES
-    assert len(d["concentrations"]) == N_COMPONENTS
-
-
-def test_components_to_dict_values_match(
-    components: SphericalCauchyMixtureParams,
-) -> None:
-    d = components.to_dict()
-    assert_allclose(d["weights"], components.weights)
-    assert_allclose(d["means"], components.means)
-    assert_allclose(d["concentrations"], components.concentrations)
-
-
-def test_components_to_dict_json_serializable(
-    components: SphericalCauchyMixtureParams,
-) -> None:
-    json.dumps(components.to_dict())  # must not raise
-
-
-# ---------------------------------------------------------------------------
-# SphericalCauchyMixture.to_dict
-# ---------------------------------------------------------------------------
-
-
-def test_to_dict_type_tag(unfitted_model: SphericalCauchyMixture) -> None:
-    assert unfitted_model.to_dict()["type"] == "SphericalCauchyMixture"
-
-
-def test_to_dict_version(unfitted_model: SphericalCauchyMixture) -> None:
-    assert unfitted_model.to_dict()["version"] == 2
-
-
-def test_to_dict_spheremix_version(unfitted_model: SphericalCauchyMixture) -> None:
-    assert "spheremix_version" in unfitted_model.to_dict()
-
-
-def test_to_dict_hyperparameters() -> None:
-    model = SphericalCauchyMixture(
-        n_components=3, init="kmeans", max_iter=50, tol=1e-3, rtol=1e-5, verbose=True
-    )
-    d = model.to_dict()
-    assert d["n_components"] == 3
-    assert d["init"] == "kmeans"
-    assert d["max_iter"] == 50
-    assert d["tol"] == pytest.approx(1e-3)
-    assert d["rtol"] == pytest.approx(1e-5)
-    assert d["verbose"] is True
-
-
-def test_to_dict_unfitted_params_is_none(
-    unfitted_model: SphericalCauchyMixture,
-) -> None:
-    assert unfitted_model.to_dict()["params_"] is None
-
-
-def test_to_dict_fitted_state(fitted_model: SphericalCauchyMixture) -> None:
-    d = fitted_model.to_dict()
-    assert d["log_likelihood_"] == pytest.approx(-123.45)
-    assert d["n_iter_"] == 10
-    assert d["params_"] is not None
-    assert set(d["params_"].keys()) == {"weights", "means", "concentrations"}
-
-
-def test_to_dict_json_serializable(fitted_model: SphericalCauchyMixture) -> None:
-    json.dumps(fitted_model.to_dict())  # must not raise
-
-
-# ---------------------------------------------------------------------------
-# SphericalCauchyMixture.from_dict
-# ---------------------------------------------------------------------------
-
-
-def test_from_dict_restores_hyperparameters() -> None:
-    model = SphericalCauchyMixture(
-        n_components=3, init="kmeans", max_iter=50, tol=1e-3, rtol=1e-5, verbose=True
-    )
-    restored = SphericalCauchyMixture.from_dict(model.to_dict())
-    assert restored.n_components == 3
-    assert restored.init == "kmeans"
-    assert restored.max_iter == 50
-    assert restored.tol == pytest.approx(1e-3)
-    assert restored.rtol == pytest.approx(1e-5)
-    assert restored.verbose is True
-
-
-def test_from_dict_restores_unfitted_state(
-    unfitted_model: SphericalCauchyMixture,
-) -> None:
-    restored = SphericalCauchyMixture.from_dict(unfitted_model.to_dict())
-    assert restored.params_ is None
-    assert restored.n_iter_ == 0
-
-
-def test_from_dict_restores_fitted_state(fitted_model: SphericalCauchyMixture) -> None:
-    restored = SphericalCauchyMixture.from_dict(fitted_model.to_dict())
-    assert restored.log_likelihood_ == pytest.approx(-123.45)
-    assert restored.n_iter_ == 10
-    assert restored.params_ is not None
-
-
-def test_from_dict_restores_arrays_as_ndarray(
-    fitted_model: SphericalCauchyMixture,
-) -> None:
-    restored = SphericalCauchyMixture.from_dict(fitted_model.to_dict())
-    assert restored.params_ is not None
-    assert isinstance(restored.params_.weights, np.ndarray)
-    assert isinstance(restored.params_.means, np.ndarray)
-    assert isinstance(restored.params_.concentrations, np.ndarray)
-
-
-def test_from_dict_restored_arrays_match(fitted_model: SphericalCauchyMixture) -> None:
-    restored = SphericalCauchyMixture.from_dict(fitted_model.to_dict())
-    assert restored.params_ is not None
-    assert fitted_model.params_ is not None
-    assert_allclose(restored.params_.weights, fitted_model.params_.weights)
-    assert_allclose(restored.params_.means, fitted_model.params_.means)
-    assert_allclose(
-        restored.params_.concentrations, fitted_model.params_.concentrations
-    )
-
-
-def test_from_dict_raises_on_wrong_type(fitted_model: SphericalCauchyMixture) -> None:
-    d = fitted_model.to_dict()
-    d["type"] = "SomeOtherModel"
-    with pytest.raises(ValueError, match="type"):
-        SphericalCauchyMixture.from_dict(d)
-
-
-def test_from_dict_raises_on_wrong_version(
-    fitted_model: SphericalCauchyMixture,
-) -> None:
-    d = fitted_model.to_dict()
-    d["version"] = 99
-    with pytest.raises(ValueError, match="version"):
-        SphericalCauchyMixture.from_dict(d)
-
-
-# ---------------------------------------------------------------------------
-# Round-trip
-# ---------------------------------------------------------------------------
-
-
-def test_dict_roundtrip_fitted(fitted_model: SphericalCauchyMixture) -> None:
-    restored = SphericalCauchyMixture.from_dict(fitted_model.to_dict())
-    assert restored.to_dict() == fitted_model.to_dict()
-
-
-def test_dict_roundtrip_unfitted(unfitted_model: SphericalCauchyMixture) -> None:
-    restored = SphericalCauchyMixture.from_dict(unfitted_model.to_dict())
-    assert restored.to_dict() == unfitted_model.to_dict()
-
-
-def test_json_roundtrip_fitted(fitted_model: SphericalCauchyMixture) -> None:
-    restored = SphericalCauchyMixture.from_dict(
-        json.loads(json.dumps(fitted_model.to_dict()))
-    )
-    assert restored.params_ is not None
-    assert fitted_model.params_ is not None
-    assert_allclose(restored.params_.weights, fitted_model.params_.weights)
-    assert_allclose(restored.params_.means, fitted_model.params_.means)
-    assert_allclose(
-        restored.params_.concentrations, fitted_model.params_.concentrations
-    )
-    assert restored.log_likelihood_ == pytest.approx(fitted_model.log_likelihood_)
-    assert restored.n_iter_ == fitted_model.n_iter_
-
-
-# ---------------------------------------------------------------------------
-# Shared fixture for scoring / information-criterion tests
-# ---------------------------------------------------------------------------
-
 N_SAMPLES: int = 20
+CONCENTRATIONS: NDArray[np.float64] = np.array([0.3, 0.7])
+
+SCORING_METHODS: list[str] = [
+    "predict_proba",
+    "predict",
+    "score_samples",
+    "score",
+    "aic",
+    "bic",
+    "icl",
+    "bici",
+    "dic",
+]
+SHARED_FUNCTIONS: dict[str, object] = {
+    "predict_proba": compute_responsibilities,
+    "score_samples": compute_log_likelihoods,
+    "aic": compute_aic,
+    "bic": compute_bic,
+    "icl": compute_icl,
+    "bici": compute_bici,
+    "dic": compute_dic,
+}
 
 
 @pytest.fixture
-def X(rng: np.random.Generator) -> np.ndarray:
-    """Unit vectors on S^2, shape (N_SAMPLES, N_FEATURES)."""
-    X = rng.standard_normal((N_SAMPLES, N_FEATURES))
-    return X / np.linalg.norm(X, axis=1, keepdims=True)  # type: ignore[no-any-return]
+def X() -> NDArray[np.float64]:
+    points: NDArray[np.float64] = np.random.default_rng(0).standard_normal(
+        (N_SAMPLES, N_FEATURES)
+    )
+    return points / np.linalg.norm(points, axis=1, keepdims=True)  # type: ignore[no-any-return]
+
+
+@pytest.fixture
+def params() -> SphericalCauchyMixtureParams:
+    return SphericalCauchyMixtureParams(n_components=N_COMPONENTS, max_iter=5, seed=0)
+
+
+@pytest.fixture
+def components() -> SphericalCauchyMixtureComponents:
+    return SphericalCauchyMixtureComponents(
+        weights=np.array([0.4, 0.6]),
+        means=np.eye(N_FEATURES)[:N_COMPONENTS],
+        concentrations=CONCENTRATIONS,
+    )
+
+
+@pytest.fixture
+def convergence() -> SphericalMixtureConvergence:
+    return SphericalMixtureConvergence(log_likelihood=-12.5, n_iter=3, converged=True)
+
+
+@pytest.fixture
+def fitted_mixture(
+    params: SphericalCauchyMixtureParams,
+    components: SphericalCauchyMixtureComponents,
+    convergence: SphericalMixtureConvergence,
+) -> SphericalCauchyMixture:
+    return SphericalCauchyMixture.from_state(
+        SphericalCauchyMixtureState(
+            params=params, components=components, convergence=convergence
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
-# is_fitted
+# Params
 # ---------------------------------------------------------------------------
 
 
-def test_is_fitted_returns_false_before_fit(
-    unfitted_model: SphericalCauchyMixture,
-) -> None:
-    assert unfitted_model.is_fitted() is False
+def test_params_satisfy_protocol(params: SphericalCauchyMixtureParams) -> None:
+    assert isinstance(params, SphericalMixtureParams)
 
 
-def test_is_fitted_returns_true_after_fit(
-    fitted_model: SphericalCauchyMixture,
-) -> None:
-    assert fitted_model.is_fitted() is True
+@pytest.mark.parametrize("n_components", [0, -1])
+def test_params_reject_too_few_components(n_components: int) -> None:
+    with pytest.raises(ValueError, match="n_components must be at least 1"):
+        SphericalCauchyMixtureParams(n_components=n_components)
 
 
-# ---------------------------------------------------------------------------
-# score_samples
-# ---------------------------------------------------------------------------
-
-
-def test_score_samples_returns_ndarray(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    assert isinstance(fitted_model.score_samples(X), np.ndarray)
-
-
-def test_score_samples_shape(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    assert fitted_model.score_samples(X).shape == (N_SAMPLES,)
-
-
-def test_score_samples_finite(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    assert np.all(np.isfinite(fitted_model.score_samples(X)))
-
-
-def test_score_samples_raises_if_unfitted(
-    unfitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    with pytest.raises(ValueError):
-        unfitted_model.score_samples(X)
+@pytest.mark.parametrize("max_iter", [0, -1])
+def test_params_reject_too_few_iterations(max_iter: int) -> None:
+    with pytest.raises(ValueError, match="max_iter must be at least 1"):
+        SphericalCauchyMixtureParams(n_components=N_COMPONENTS, max_iter=max_iter)
 
 
 # ---------------------------------------------------------------------------
-# score
+# Components
 # ---------------------------------------------------------------------------
 
 
-def test_score_returns_float(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
+def test_components_satisfy_protocol(
+    components: SphericalCauchyMixtureComponents,
 ) -> None:
-    assert isinstance(fitted_model.score(X), float)
+    assert isinstance(components, SphericalMixtureComponents)
 
 
-def test_score_equals_mean_of_score_samples(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
+def test_components_count_and_dimension(
+    components: SphericalCauchyMixtureComponents,
 ) -> None:
-    assert fitted_model.score(X) == pytest.approx(fitted_model.score_samples(X).mean())
+    assert components.component_count == N_COMPONENTS
+    assert components.dimension == N_FEATURES
 
 
-def test_score_accepts_y_none(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
+def test_log_joint_densities_use_logpdf(
+    X: NDArray[np.float64],
+    components: SphericalCauchyMixtureComponents,
 ) -> None:
-    fitted_model.score(X, y=None)  # must not raise
+    expected: NDArray[np.float64] = np.stack(
+        [
+            np.log(components.weights[k])
+            + spherical_cauchy_logpdf(X, components.means[k], CONCENTRATIONS[k])
+            for k in range(N_COMPONENTS)
+        ],
+        axis=1,
+    )
 
-
-def test_score_raises_if_unfitted(
-    unfitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    with pytest.raises(ValueError):
-        unfitted_model.score(X)
+    assert_allclose(components.log_joint_densities(X), expected, rtol=1e-12)
 
 
 # ---------------------------------------------------------------------------
-# aic
+# State
 # ---------------------------------------------------------------------------
 
 
-def test_aic_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert isinstance(fitted_model.aic(X), float)
+def test_state_satisfies_protocol(params: SphericalCauchyMixtureParams) -> None:
+    assert isinstance(SphericalCauchyMixtureState(params=params), SphericalMixtureState)
 
 
-def test_aic_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    n_params = N_COMPONENTS * (N_FEATURES + 1) - 1
-    expected = -2.0 * fitted_model.score_samples(X).sum() + 2.0 * n_params
-    assert fitted_model.aic(X) == pytest.approx(expected)
-
-
-def test_aic_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert np.isfinite(fitted_model.aic(X))
-
-
-def test_aic_raises_if_unfitted(
-    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+def test_state_is_not_fitted_without_components(
+    params: SphericalCauchyMixtureParams,
 ) -> None:
-    with pytest.raises(ValueError):
-        unfitted_model.aic(X)
+    assert SphericalCauchyMixtureState(params=params).is_fitted is False
+
+
+def test_state_rejects_components_without_convergence(
+    params: SphericalCauchyMixtureParams,
+    components: SphericalCauchyMixtureComponents,
+) -> None:
+    with pytest.raises(ValueError, match="both be set or both be None"):
+        SphericalCauchyMixtureState(params=params, components=components)
+
+
+def test_state_rejects_convergence_without_components(
+    params: SphericalCauchyMixtureParams,
+    convergence: SphericalMixtureConvergence,
+) -> None:
+    with pytest.raises(ValueError, match="both be set or both be None"):
+        SphericalCauchyMixtureState(params=params, convergence=convergence)
+
+
+def test_state_rejects_wrong_component_count(
+    components: SphericalCauchyMixtureComponents,
+    convergence: SphericalMixtureConvergence,
+) -> None:
+    with pytest.raises(ValueError, match="params.n_components is 3"):
+        SphericalCauchyMixtureState(
+            params=SphericalCauchyMixtureParams(n_components=3),
+            components=components,
+            convergence=convergence,
+        )
 
 
 # ---------------------------------------------------------------------------
-# bic
+# Mixture
 # ---------------------------------------------------------------------------
 
 
-def test_bic_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert isinstance(fitted_model.bic(X), float)
+def test_mixture_satisfies_protocol(params: SphericalCauchyMixtureParams) -> None:
+    assert isinstance(SphericalCauchyMixture(params), SphericalMixture)
 
 
-def test_bic_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    n_params = N_COMPONENTS * (N_FEATURES + 1) - 1
-    expected = -2.0 * fitted_model.score_samples(X).sum() + n_params * np.log(N_SAMPLES)
-    assert fitted_model.bic(X) == pytest.approx(expected)
+def test_new_mixture_holds_only_params(params: SphericalCauchyMixtureParams) -> None:
+    mixture: SphericalCauchyMixture = SphericalCauchyMixture(params)
+
+    assert mixture.params is params
+    assert mixture.is_fitted is False
+    assert mixture.state.components is None
+    assert mixture.state.convergence is None
 
 
-def test_bic_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert np.isfinite(fitted_model.bic(X))
-
-
-def test_bic_raises_if_unfitted(
-    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+def test_fit_returns_new_fitted_mixture(
+    X: NDArray[np.float64],
+    params: SphericalCauchyMixtureParams,
 ) -> None:
-    with pytest.raises(ValueError):
-        unfitted_model.bic(X)
+    mixture: SphericalCauchyMixture = SphericalCauchyMixture(params)
+
+    fitted: SphericalCauchyMixture = mixture.fit(X)
+
+    assert fitted is not mixture
+    assert fitted.is_fitted is True
+    assert fitted.params is params
+    assert mixture.is_fitted is False
 
 
-def test_bic_penalises_more_than_aic(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
+def test_fit_records_convergence(
+    X: NDArray[np.float64],
+    params: SphericalCauchyMixtureParams,
 ) -> None:
-    # BIC > AIC when log(N) > 2, i.e. N > ~7; holds for any realistic dataset
-    assert fitted_model.bic(X) > fitted_model.aic(X)
+    fitted: SphericalCauchyMixture = SphericalCauchyMixture(params).fit(X)
+    convergence: SphericalMixtureConvergence | None = fitted.state.convergence
+
+    assert convergence is not None
+    assert 1 <= convergence.n_iter <= params.max_iter
+    assert convergence.log_likelihood == pytest.approx(
+        fitted.score_samples(X).sum(), rel=1e-10
+    )
 
 
-# ---------------------------------------------------------------------------
-# icl
-# ---------------------------------------------------------------------------
+def test_fit_stopped_at_max_iter_is_not_converged(X: NDArray[np.float64]) -> None:
+    params: SphericalCauchyMixtureParams = SphericalCauchyMixtureParams(
+        n_components=N_COMPONENTS, max_iter=1, tol=0.0, rtol=0.0, seed=0
+    )
+
+    convergence: SphericalMixtureConvergence | None = (
+        SphericalCauchyMixture(params).fit(X).state.convergence
+    )
+
+    assert convergence is not None
+    assert convergence.n_iter == 1
+    assert convergence.converged is False
 
 
-def test_icl_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert isinstance(fitted_model.icl(X), float)
+def test_fit_with_loose_tolerance_is_converged(X: NDArray[np.float64]) -> None:
+    params: SphericalCauchyMixtureParams = SphericalCauchyMixtureParams(
+        n_components=N_COMPONENTS, max_iter=5, tol=np.inf, seed=0
+    )
+
+    convergence: SphericalMixtureConvergence | None = (
+        SphericalCauchyMixture(params).fit(X).state.convergence
+    )
+
+    # The first iteration compares with a log-likelihood of -inf, so the
+    # earliest a fit can converge is the second iteration.
+    assert convergence is not None
+    assert convergence.n_iter == 2
+    assert convergence.converged is True
 
 
-def test_icl_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    responsibilities = fitted_model.predict_proba(X)
-    entropy = -(responsibilities * np.log(np.clip(responsibilities, 1e-300, 1.0))).sum()
-    expected = fitted_model.bic(X) + 2.0 * entropy
-    assert fitted_model.icl(X) == pytest.approx(expected)
+def test_from_state_keeps_state(fitted_mixture: SphericalCauchyMixture) -> None:
+    restored: SphericalCauchyMixture = SphericalCauchyMixture.from_state(
+        fitted_mixture.state
+    )
+
+    assert restored.state is fitted_mixture.state
+    assert restored.is_fitted is True
 
 
-def test_icl_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert np.isfinite(fitted_model.icl(X))
-
-
-def test_icl_raises_if_unfitted(
-    unfitted_model: SphericalCauchyMixture, X: np.ndarray
+@pytest.mark.parametrize("method", SCORING_METHODS)
+def test_unfitted_mixture_raises(
+    X: NDArray[np.float64],
+    params: SphericalCauchyMixtureParams,
+    method: str,
 ) -> None:
-    with pytest.raises(ValueError):
-        unfitted_model.icl(X)
+    with pytest.raises(RuntimeError, match="not fitted; call fit first"):
+        getattr(SphericalCauchyMixture(params), method)(X)
 
 
-def test_icl_penalises_at_least_as_much_as_bic(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
+@pytest.mark.parametrize("method", list(SHARED_FUNCTIONS))
+def test_methods_call_shared_functions(
+    X: NDArray[np.float64],
+    fitted_mixture: SphericalCauchyMixture,
+    components: SphericalCauchyMixtureComponents,
+    method: str,
 ) -> None:
-    assert fitted_model.icl(X) >= fitted_model.bic(X)
+    expected: object = SHARED_FUNCTIONS[method](X, components)  # type: ignore[operator]
+
+    assert_allclose(getattr(fitted_mixture, method)(X), expected)  # type: ignore[arg-type]
 
 
-# ---------------------------------------------------------------------------
-# bici
-# ---------------------------------------------------------------------------
-
-
-def test_bici_returns_float(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
+def test_predict_and_score(
+    X: NDArray[np.float64],
+    fitted_mixture: SphericalCauchyMixture,
+    components: SphericalCauchyMixtureComponents,
 ) -> None:
-    assert isinstance(fitted_model.bici(X), float)
-
-
-def test_bici_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    responsibilities = fitted_model.predict_proba(X)
-    assignments = responsibilities.argmax(axis=1)
-    log_map_prob = np.log(responsibilities[np.arange(N_SAMPLES), assignments])
-    expected = fitted_model.bic(X) - 2.0 * log_map_prob.sum()
-    assert fitted_model.bici(X) == pytest.approx(expected)
-
-
-def test_bici_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert np.isfinite(fitted_model.bici(X))
-
-
-def test_bici_raises_if_unfitted(
-    unfitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    with pytest.raises(ValueError):
-        unfitted_model.bici(X)
-
-
-def test_bici_penalises_at_least_as_much_as_bic(
-    fitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    assert fitted_model.bici(X) >= fitted_model.bic(X)
-
-
-# ---------------------------------------------------------------------------
-# dic
-# ---------------------------------------------------------------------------
-
-
-def test_dic_returns_float(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert isinstance(fitted_model.dic(X), float)
-
-
-def test_dic_formula(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    n_params = N_COMPONENTS * (N_FEATURES + 1) - 1
-    responsibilities = fitted_model.predict_proba(X)
-    entropy = -(responsibilities * np.log(np.clip(responsibilities, 1e-300, 1.0))).sum()
-    log_likelihood = fitted_model.score_samples(X).sum()
-    expected = -2.0 * log_likelihood + 2.0 * entropy + 2.0 * n_params
-    assert fitted_model.dic(X) == pytest.approx(expected)
-
-
-def test_dic_finite(fitted_model: SphericalCauchyMixture, X: np.ndarray) -> None:
-    assert np.isfinite(fitted_model.dic(X))
-
-
-def test_dic_raises_if_unfitted(
-    unfitted_model: SphericalCauchyMixture, X: np.ndarray
-) -> None:
-    with pytest.raises(ValueError):
-        unfitted_model.dic(X)
+    assert_allclose(
+        fitted_mixture.predict(X),
+        compute_responsibilities(X, components).argmax(axis=1),
+    )
+    assert fitted_mixture.score(X) == pytest.approx(
+        compute_log_likelihoods(X, components).mean()
+    )
