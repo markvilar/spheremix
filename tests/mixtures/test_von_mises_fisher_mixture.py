@@ -7,6 +7,9 @@ import dataclasses
 import numpy as np
 import pytest
 
+from collections.abc import Callable
+from typing import Any
+
 from numpy.testing import assert_allclose
 from numpy.typing import NDArray
 
@@ -49,7 +52,7 @@ SCORING_METHODS: list[str] = [
     "bici",
     "dic",
 ]
-SHARED_FUNCTIONS: dict[str, object] = {
+SHARED_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "predict_proba": compute_responsibilities,
     "score_samples": compute_log_likelihoods,
     "aic": compute_aic,
@@ -306,9 +309,9 @@ def test_methods_call_shared_functions(
     components: VonMisesFisherMixtureComponents,
     method: str,
 ) -> None:
-    expected: object = SHARED_FUNCTIONS[method](X, components)  # type: ignore[operator]
+    expected: Any = SHARED_FUNCTIONS[method](X, components)
 
-    assert_allclose(getattr(fitted_mixture, method)(X), expected)  # type: ignore[arg-type]
+    assert_allclose(getattr(fitted_mixture, method)(X), expected)
 
 
 def test_predict_and_score(

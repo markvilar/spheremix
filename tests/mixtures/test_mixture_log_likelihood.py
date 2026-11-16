@@ -28,6 +28,7 @@ from spheremix.mixtures import (
     SphericalCauchyMixture,
     SphericalCauchyMixtureComponents,
     SphericalCauchyMixtureParams,
+    SphericalMixtureComponents,
     SphericalMixtureConvergence,
     VonMisesFisherMixture,
     VonMisesFisherMixtureComponents,
@@ -50,7 +51,9 @@ N_SAMPLES: int = 200
 N_FEATURES: int = 3
 
 # (components type, log-pdf, two concentrations that differ strongly)
-CASES: list[tuple[Callable[..., object], LogPdf, tuple[float, float]]] = [
+CASES: list[
+    tuple[Callable[..., SphericalMixtureComponents], LogPdf, tuple[float, float]]
+] = [
     (SphericalCauchyMixtureComponents, spherical_cauchy_logpdf, (0.2, 0.9)),
     (PoissonKernelMixtureComponents, pkbd_logpdf, (0.2, 0.9)),
     (PowerSphericalMixtureComponents, power_spherical_logpdf, (5.0, 50.0)),
@@ -97,7 +100,7 @@ def test_log_likelihood_matches_score(
 
 @pytest.mark.parametrize(("components_type", "logpdf", "concentrations"), CASES)
 def test_responsibilities_use_logpdf(
-    components_type: Callable[..., object],
+    components_type: Callable[..., SphericalMixtureComponents],
     logpdf: LogPdf,
     concentrations: tuple[float, float],
 ) -> None:
@@ -106,7 +109,7 @@ def test_responsibilities_use_logpdf(
     )
     means: NDArray[np.float64] = np.eye(N_FEATURES)[:2]
     weights: NDArray[np.float64] = np.array([0.5, 0.5])
-    components: object = components_type(
+    components: SphericalMixtureComponents = components_type(
         weights=weights, means=means, concentrations=np.array(concentrations)
     )
 
@@ -122,7 +125,7 @@ def test_responsibilities_use_logpdf(
     )
 
     assert_allclose(
-        compute_responsibilities(data, components),  # type: ignore[arg-type]
+        compute_responsibilities(data, components),
         expected,
         rtol=1e-10,
     )
