@@ -230,6 +230,34 @@ def test_progress_reports_each_iteration(
     assert events[-1].converged is convergence.converged
 
 
+@pytest.mark.parametrize(
+    ("steps", "settings"),
+    [([1.0, 0.0], _Settings(tol=1e-3)), ([1.0], _Settings())],
+    ids=["converged", "max_iter"],
+)
+def test_history_records_each_iteration(
+    X: NDArray[np.float64],
+    components: _StubComponents,
+    steps: list[float],
+    settings: _Settings,
+) -> None:
+    events: list[FitProgress] = []
+
+    _, convergence = fit_mixture_em(
+        X,
+        components,
+        _RecordingMStep(steps, []),
+        settings,
+        progress_callback=events.append,
+    )
+
+    assert len(convergence.log_likelihood_history) == convergence.n_iter
+    assert convergence.log_likelihood_history == tuple(
+        event.log_likelihood for event in events
+    )
+    assert convergence.log_likelihood_history[-1] == convergence.log_likelihood
+
+
 def test_progress_reports_log_likelihood_change(
     X: NDArray[np.float64], components: _StubComponents
 ) -> None:

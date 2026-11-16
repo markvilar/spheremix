@@ -101,6 +101,7 @@ def fit_mixture_em[C: SphericalMixtureComponents](
     log_likelihood: float = -np.inf
     n_iter: int = 0
     converged: bool = False
+    history: list[float] = []
 
     for iteration in range(settings.max_iter):
         # 2. E-step: compute the responsibilities of the components.
@@ -112,6 +113,7 @@ def fit_mixture_em[C: SphericalMixtureComponents](
         # 4. Compute the log-likelihood and its change, and check convergence.
         previous_log_likelihood: float = log_likelihood
         log_likelihood = float(compute_log_likelihoods(X, components).sum())
+        history.append(log_likelihood)
         if settings.verbose:
             logger.info(f"Iter {iteration:03d} – loglik = {log_likelihood:.5f}")
         change: float = abs(log_likelihood - previous_log_likelihood)
@@ -143,6 +145,7 @@ def fit_mixture_em[C: SphericalMixtureComponents](
         log_likelihood=log_likelihood,
         n_iter=n_iter,
         converged=converged,
+        log_likelihood_history=tuple(history),
     )
     return components, convergence
 

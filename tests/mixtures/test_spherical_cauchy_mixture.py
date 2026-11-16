@@ -82,7 +82,12 @@ def components() -> SphericalCauchyMixtureComponents:
 
 @pytest.fixture
 def convergence() -> SphericalMixtureConvergence:
-    return SphericalMixtureConvergence(log_likelihood=-12.5, n_iter=3, converged=True)
+    return SphericalMixtureConvergence(
+        log_likelihood=-12.5,
+        n_iter=3,
+        converged=True,
+        log_likelihood_history=(-20.0, -13.0, -12.5),
+    )
 
 
 @pytest.fixture
